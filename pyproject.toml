@@ -1,0 +1,36 @@
+[project]
+name = "andes-wkf"
+version = "0.1.0"
+description = "ANDES EDPS Workflow"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "pycpl",
+  "edps",
+  "pyesorex",
+]
+
+
+[dependency-groups]
+dev = ["pytest"]
+
+[[tool.uv.index]]
+name = "pycpl"
+url = "https://ivh.github.io/pycpl/simple/"
+explicit = true
+
+[[tool.uv.index]]
+name = "eso"
+url = "https://ftp.eso.org/pub/dfs/pipelines/libraries/"
+explicit = true
+
+[tool.uv.sources]
+pycpl = { index = "pycpl" }
+pyesorex = { index = "eso" }
+edps = { index = "eso" }
+edpsgui = { index = "eso" }
+edpsplot = { index = "eso" }
+
+[tool.uv]
+constraint-dependencies = ["numba>=0.60"]
+
