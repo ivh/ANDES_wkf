@@ -1,0 +1,402 @@
+# ANDES canonical calibration and observation plan -- DRAFT for coordination
+#
+# One machine-readable statement of what raw frames the instrument produces,
+# linking: calibration procedures (AD2) <-> ICS templates <-> DPR
+# classification (DRS/EDPS workflow) <-> consuming recipes.
+#
+# Planned consumers:
+#   - edps repo: generate classification-test samples and header-only test
+#     nights from this file; assert every planned exposure classifies to
+#     exactly one tag and that a plan-generated night organizes into a
+#     complete reduction cascade (edps -od)
+#   - E2E repo: drive simulation of real-pixel raw frames (see E2E/src/dpr_plan.md)
+#
+# Sources:
+#   - AD2: E-AND-SI-PLA-01-00-001 v0.9 Science Operation and Calibration Plan
+#     (Tables 4, 5, 6 and Sect. 6)
+#   - DRL: E-AND-SW-SPE-09-00-002 v1.2 DRL Specifications (Table 2, Ch. 4, 7)
+#
+# Where the two documents disagree, the exposures below follow AD2 (it defines
+# what is actually taken); all deltas are listed under `reconciliation` and
+# must be fed back into the documents and the workflow classification.
+
+meta:
+  instrument: ANDES
+  status: draft
+  version: 0.1
+  updated: 2026-07-04
+
+conventions:
+  # DPR.TYPE grammar: "<KIND>,<A>,<C>,<B>" for SL echelle calibrations
+  # (A/B = the two pseudo-slits, C = calibration fibre between them);
+  # "<KIND>,<slit>[,<calfib>]" for IFU; plain "<A>,<C>,<B>" for science.
+  # See edps repo, andes/andes_classification.py.
+  dpr_slot_order: [A, C, B]
+  source_tokens:
+    LAMP: "continuum lamp (simulator source: flat)"
+    FP: "Fabry-Perot etalon (simulator source: fp)"
+    LFC: "laser frequency comb, upgrade path (simulator source: lfc)"
+    HCL: "hollow-cathode lamp ThAr/UNe (simulator source: hcl, to be added)"
+    LED: "detector flat-field LEDs, no spectrograph light path"
+    SKY: "sky light (twilight or night)"
+    OBJECT: "astronomical target"
+    OFF: "slit/fibre dark"
+  setup_keywords: [instrume, seq.arm, ins.mode, det.binx, det.biny]
+  proposed_keywords:
+    det.readout: "readout mode (fast/slow); AD2 configs are binning+readout pairs"
+    ins.ifu.scale: "IFU spaxel scale (7/16/35/100 mas); separate calibrations per scale"
+    ins.mask: "fibre mask position (M1/M2/M3) for the slit-mask procedures"
+
+setups:
+  arms:
+    UBV: {detectors: [U, B, V], detector_type: CCD, has_bias: true}
+    RIZ: {detectors: [R, IZ], detector_type: CCD, has_bias: true}
+    YJH: {detectors: [Y, J, H], detector_type: HAWAII4RG, has_bias: false}
+    K: {detectors: [K], detector_type: HAWAII4RG, has_bias: false, note: "goal / upgrade"}
+  # CCD binning (dispersion x cross-dispersion) + readout configurations;
+  # the detector-set and daily/when-used split follows AD2 Sect. 6.3
+  vis_configs:
+    - {name: 1x1_fast, det.binx: 1, det.biny: 1, det.readout: fast, set: daily}
+    - {name: 1x2_slow, det.binx: 1, det.biny: 2, det.readout: slow, set: daily}
+    - {name: 2x2_slow, det.binx: 2, det.biny: 2, det.readout: slow, set: when-used}
+  ifu_scales: [7, 16, 35, 100]
+
+# ---------------------------------------------------------------------------
+# Off-line calibrations (AD2 Tables 4 and 5). One entry per calibration
+# procedure (CP); exposure times follow AD2 Sect. 6.4 (~2 min average per
+# frame incl. readout; CCD darks 1 hr; CMOS darks < 30 min).
+# ---------------------------------------------------------------------------
+procedures:
+
+  # --- detector-set (per detector, per VIS config; mode-independent) --------
+
+  - cp: C-B
+    template: ANDES_gen_cal_bias
+    set: detector
+    applies_to: {arms: [UBV, RIZ], configs: all_vis}
+    frequency: daily-to-weekly
+    dpr: {catg: CALIB, tech: IMAGE}
+    exposures:
+      - {type: BIAS, n: 10, exptime_s: 0}
+    recipe: andes_cal_bias
+    workflow_task: bias
+
+  - cp: C-D
+    template: ANDES_gen_cal_dark
+    set: detector
+    applies_to: {arms: [UBV, RIZ], configs: all_vis}
+    frequency: daily-to-weekly
+    dpr: {catg: CALIB, tech: IMAGE}
+    exposures:
+      - {type: DARK, n: 5, exptime_s: 3600}
+    recipe: andes_cal_dark
+    workflow_task: dark
+
+  - cp: C-D-nir
+    template: ANDES_gen_cal_dark
+    set: detector
+    applies_to: {arms: [YJH, K]}
+    frequency: daily-to-weekly
+    dpr: {catg: CALIB, tech: IMAGE}
+    exposures:
+      # exposure times chosen to match science sub-exposures
+      - {type: DARK, n: 10, exptime_s: 1800, note: "exptime matched to observations"}
+    recipe: andes_cal_dark
+    workflow_task: dark
+
+  - cp: C-led-ff
+    template: ANDES_gen_cal_linflat
+    set: detector
+    applies_to: {arms: [UBV, RIZ], configs: all_vis}
+    frequency: weekly-to-monthly
+    dpr: {catg: TECHNICAL, tech: IMAGE}
+    exposures:
+      - {type: "FLAT,LAMP", n: 15, exptime_s: varied, note: "several exposure times for gain + linearity"}
+    recipe: andes_cal_led
+    workflow_task: led
+
+  - cp: C-ff-D-nir
+    template: ANDES_gen_cal_linflat
+    set: detector
+    applies_to: {arms: [YJH, K]}
+    frequency: weekly-to-monthly
+    dpr: {catg: TECHNICAL, tech: IMAGE}
+    exposures:
+      - {type: "FLAT,LAMP", n: 15, exptime_s: varied, note: "linearity + gain curve, varying flux"}
+    recipe: andes_cal_led
+    workflow_task: led
+
+  # --- daily-set, SL-UNI ----------------------------------------------------
+  # VIS: taken for configs 1x1_fast and 1x2_slow; the same CPs repeat for
+  # 2x2_slow as when-used-set. YJH: single configuration.
+
+  - cp: C-ff-SL-UNI
+    template: ANDES_SL-UNI_cal_flat
+    set: daily
+    applies_to: {arms: [UBV, RIZ], modes: [SL-UNI], configs: daily_vis}
+    frequency: daily
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "FLAT,LAMP,LAMP,LAMP", n: 10, exptime_s: 60}
+    recipe: andes_cal_flat
+    workflow_task: flat
+
+  - cp: C-ff-SL-UNI-nir
+    template: ANDES_SL-UNI_cal_flat
+    set: daily
+    applies_to: {arms: [YJH], modes: [SL-UNI]}
+    frequency: daily
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      # NIR flats come as lamp-on/lamp-off pairs for background subtraction
+      - {type: "FLAT,LAMP,LAMP,LAMP", n: 10, exptime_s: 60}
+      - {type: "FLAT,OFF,OFF,OFF", n: 10, exptime_s: 60, note: "lamp-off; no DPR type in DRL spec yet"}
+    recipe: andes_cal_flat
+    workflow_task: flat
+
+  - cp: C-wl-FP-SL-UNI
+    template: ANDES_SL-UNI_cal_wave
+    set: daily
+    applies_to: {arms: [UBV, RIZ, YJH], modes: [SL-UNI], configs: daily_vis}
+    frequency: daily
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      # AD2: FP illuminates ONE aperture at a time, plus the calibration fibre
+      - {type: "WAVE,FP,FP,OFF", n: 2, exptime_s: 60}
+      - {type: "WAVE,OFF,FP,FP", n: 2, exptime_s: 60}
+    recipe: andes_cal_wave_FP
+    workflow_task: wave_fp
+
+  - cp: C-wl-HCL-SL-UNI
+    template: ANDES_SL-UNI_cal_wave
+    set: daily
+    applies_to: {arms: [UBV, RIZ, YJH], modes: [SL-UNI], configs: daily_vis}
+    frequency: daily
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "WAVE,HCL,FP,OFF", n: 2, exptime_s: 120}
+      - {type: "WAVE,OFF,FP,HCL", n: 2, exptime_s: 120}
+    recipe: andes_cal_wave_FP
+    workflow_task: wave_fp
+
+  - cp: CC-wl-SL-UNI
+    template: ANDES_SL-UNI_cal_wave
+    set: daily
+    applies_to: {arms: [UBV, RIZ, YJH], modes: [SL-UNI], configs: daily_vis}
+    frequency: daily
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      # cross-calibration of the two apertures; calibration fibre dark per AD2
+      - {type: "WAVE,FP,OFF,HCL", n: 2, exptime_s: 120}
+      - {type: "WAVE,HCL,OFF,FP", n: 2, exptime_s: 120}
+    recipe: andes_cal_wave_FP
+    workflow_task: wave_fp
+
+  - cp: C-slit-SL-UNI
+    template: ANDES_SL-UNI_cal_slitmask
+    set: daily
+    applies_to: {arms: [UBV, RIZ, YJH], modes: [SL-UNI], configs: daily_vis}
+    frequency: daily-to-weekly
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      # fibre masking system: each mask illuminates a subset of fibres
+      # (M1/M2 halves, or M1/M2/M3 thirds - under verification in AD2);
+      # source is FP or continuum. Proposed KIND pending reconciliation #3.
+      - {type: "SLIT,FP,FP,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M1}}
+      - {type: "SLIT,FP,FP,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M2}}
+      - {type: "SLIT,FP,FP,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M3}}
+    recipe: "TBD: andes_cal_slit / andes_cal_orderdef / andes_cal_LSF"
+    workflow_task: slit
+
+  # --- when-used-set --------------------------------------------------------
+  # VIS 2x2_slow: repeat C-ff-SL-UNI, C-wl-FP/HCL-SL-UNI, CC-wl-SL-UNI and
+  # C-slit-SL-UNI with config 2x2_slow (same exposure lists as above).
+  - cp: when-used-vis-2x2
+    reference: [C-ff-SL-UNI, C-wl-FP-SL-UNI, C-wl-HCL-SL-UNI, CC-wl-SL-UNI, C-slit-SL-UNI]
+    applies_to: {arms: [UBV, RIZ], modes: [SL-UNI], configs: [2x2_slow]}
+    frequency: when-used
+
+  - cp: C-ff-IFU
+    template: ANDES_IFU-AO_cal_flat
+    set: when-used
+    applies_to: {arms: [YJH], modes: [IFU-AO], per: ifu_scale}
+    frequency: when-used
+    dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
+    exposures:
+      - {type: "FLAT,LAMP", n: 8, exptime_s: 60}
+      - {type: "FLAT,OFF", n: 8, exptime_s: 60, note: "lamp-off; no DPR type in DRL spec yet"}
+    recipe: andes_cal_flat
+    workflow_task: flat
+
+  - cp: C-wl-FP-IFU
+    template: ANDES_IFU-AO_cal_wave
+    set: when-used
+    applies_to: {arms: [YJH], modes: [IFU-AO], per: ifu_scale}
+    frequency: when-used
+    dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
+    exposures:
+      - {type: "WAVE,FP,FP", n: 2, exptime_s: 60}
+    recipe: andes_cal_wave_FP
+    workflow_task: wave_fp
+
+  - cp: C-wl-HCL-IFU
+    template: ANDES_IFU-AO_cal_wave
+    set: when-used
+    applies_to: {arms: [YJH], modes: [IFU-AO], per: ifu_scale}
+    frequency: when-used
+    dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
+    exposures:
+      - {type: "WAVE,HCL,FP", n: 2, exptime_s: 120}
+    recipe: andes_cal_wave_FP
+    workflow_task: wave_fp
+
+# ---------------------------------------------------------------------------
+# Night-time / on-sky calibrations (AD2 Sect. 6.2 prose; DRL Table 2).
+# Taken when required by the science program.
+# ---------------------------------------------------------------------------
+night_calibrations:
+
+  - name: twilight_sky_flat
+    template: ANDES_SL-UNI_cal_skyFlat
+    applies_to: {modes: [SL-UNI, IFU-AO]}
+    dpr: {catg: CALIB}
+    exposures:
+      - {type: "EFF,SKY,OFF,SKY", tech: "ECHELLE,FIBER", n: tbd, note: "relative slit efficiency"}
+      - {type: "EFF,SKY", tech: "ECHELLE,IFU", n: tbd}
+    recipe: andes_cal_rel_eff
+    workflow_task: rel_eff
+    note: "availability of ELT twilight time unclear (DRL Sect. 6.2.1)"
+
+  - name: spectrophotometric_standard
+    template: ANDES_SL-UNI_specphot
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "STD,FLUX,OFF,SKY", n: 1}
+      - {type: "STD,SKY,OFF,FLUX", n: 1, note: "mirrored aperture use"}
+    recipe: andes_cal_flux
+    workflow_task: flux
+
+  - name: telluric_standard
+    template: ANDES_SL-UNI_Telluric
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "STD,TELLURIC,OFF,SKY", n: 1}
+      - {type: "STD,SKY,OFF,TELLURIC", n: 1}
+    recipe: andes_cal_telluric_std
+    workflow_task: telluric
+
+  - name: rv_standard
+    template: ANDES_SL-UNI_RVstd
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "STD,RV,FP,SKY", n: 1}
+      - {type: "STD,SKY,FP,RV", n: 1}
+    recipe: andes_science
+    workflow_task: rv_std
+
+  - name: iodine_cell_check
+    status: upgrade
+    note: "iodine absorption cell in the FE for independent wavelength verification (AD2 Sect. 6.1); no DPR type defined yet"
+
+# ---------------------------------------------------------------------------
+# Science observations (DRL Table 2); listed so a full synthetic night can be
+# generated from this file alone.
+# ---------------------------------------------------------------------------
+observations:
+
+  - name: sl_stare
+    templates: [ANDES_SL-UNI_acq, "ANDES_SL-UNI-TS/TC_obs_*"]
+    dpr: {catg: SCIENCE, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "OBJECT,FP,SKY", note: "target + simultaneous FP reference + sky"}
+      - {type: "OBJECT,DARK,SKY", note: "no simultaneous reference"}
+      - {type: "OBJECT,LFC,SKY", note: "LFC reference; upgrade path"}
+    recipe: andes_science
+    workflow_task: science
+
+  - name: sl_swap
+    templates: ["ANDES_SL-UNI-TS_obs_* (swapping)"]
+    dpr: {catg: SCIENCE, tech: "ECHELLE,FIBER,SWAPPING"}
+    exposures:
+      # ABBA sequence within one template execution
+      - {type: "OBJECT,FP,SKY", n: 2}
+      - {type: "SKY,FP,OBJECT", n: 2}
+    recipe: andes_science
+    workflow_task: science
+
+  - name: ifu
+    templates: [ANDES_IFU-AO_acq, "ANDES_IFU-AO_obs_*"]
+    dpr: {catg: SCIENCE, tech: "ECHELLE,IFU"}
+    exposures:
+      - {type: OBJECT}
+      - {type: SKY, note: "separate sky pointing (offset)"}
+    recipe: andes_science
+    workflow_task: science
+
+# ---------------------------------------------------------------------------
+# Open deltas between AD2 v0.9, DRL spec v1.2 and the current EDPS workflow.
+# Resolve here first, then update the documents, the workflow classification
+# and the simulator together.
+# ---------------------------------------------------------------------------
+reconciliation:
+  - id: 1
+    topic: wave illumination patterns
+    issue: >
+      AD2 takes wave frames one aperture at a time (WAVE,FP,FP,OFF /
+      WAVE,OFF,FP,FP etc.) plus cross-calibration pairs with dark calibration
+      fibre (WAVE,FP,OFF,HCL / WAVE,HCL,OFF,FP). DRL spec 4.3.8 instead
+      defines WAVE,HCL,FP,FP / WAVE,FP,FP,HCL / WAVE,FP,FP,FP (both apertures
+      lit). The current workflow classifies only the DRL trio; the AD2
+      variants would be unclassified today.
+  - id: 2
+    topic: order definition
+    issue: >
+      AD2 has no order-definition CP and no per-slit flats; DRL spec defines
+      ORDERDEF_A/C/B/ACB and FLAT_A/C/B raw types. Either dedicated templates
+      get added to the calibration plan, or order definition must run on the
+      combined flat (FLAT,LAMP,LAMP,LAMP) and/or the slit-mask frames.
+  - id: 3
+    topic: slit-mask frames
+    issue: >
+      AD2's C-slit-mX CPs (fibre masks M1/M2/M3, source FP or continuum) have
+      no DPR type in the DRL spec; proposed SLIT,... with new keyword ins.mask.
+      Consuming recipe unclear (cal_slit vs cal_orderdef vs cal_LSF); DRL's
+      separate LSF raw type has no CP in AD2 at all.
+  - id: 4
+    topic: NIR lamp-off frames
+    issue: >
+      YJH flats come as 10on+10off (SL) / 8on+8off (IFU); the lamp-off frames
+      (proposed FLAT,OFF,OFF,OFF / FLAT,OFF) have no DPR type in the DRL spec
+      and no classification rule in the workflow yet.
+  - id: 5
+    topic: readout mode keyword
+    issue: >
+      AD2 configurations are binning+readout pairs (1x1+fast, 1x2+slow,
+      2x2+slow); the workflow matches on det.binx/det.biny only. A readout
+      keyword (proposed det.readout) must join the setup keywords.
+      Note AD2 itself writes both "1x2" and "2x1" for the same config.
+  - id: 6
+    topic: IFU spaxel scales
+    issue: >
+      Four IFU scales (7/16/35/100) are calibrated separately; the workflow
+      has no keyword for this (proposed ins.ifu.scale) and would currently
+      mix scales within one calibration group.
+  - id: 7
+    topic: IFU FP-only wave frames
+    issue: >
+      C-wl-FP-IFU produces WAVE,FP,FP (IFU); the workflow's IFU wave rule
+      currently accepts only WAVE,HCL,FP.
+  - id: 8
+    topic: template names
+    issue: >
+      AD2 and DRL Table 2 template names differ in case/spelling
+      (ANDES_gen_cal_bias vs ANDES_gen_cal_BIAS/bias*, cal_linflat vs
+      cal_LinFlat); AD2 lacks orderdef/skyFlat/specphot/RVstd/Telluric
+      templates entirely (night calibrations appear in prose only).
+  - id: 9
+    topic: exposure counts vs workflow grouping
+    issue: >
+      AD2 splits wave calibration over six CPs sharing one template; whether
+      all wave exposures of a day share one tpl.start (one EDPS group) or six
+      must be agreed - the workflow currently groups by tpl.start and needs
+      the HCL and FP frames in one group.
