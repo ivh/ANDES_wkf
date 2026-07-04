@@ -1,0 +1,15 @@
+# Workflow and recipe parameters. EDPS loads every *parameters.yaml in this
+# directory; each top-level key is a parameter set. The set names
+# science_parameters/qc1_parameters follow the ESO convention and are what
+# the EDPS client requests by default. Per-spectrograph and per-binning
+# defaults will be handled by dedicated sets once the recipes define their
+# parameters.
+
+science_parameters:
+  is_default: yes
+  workflow_parameters: {}
+  recipe_parameters: {}
+
+qc1_parameters:
+  workflow_parameters: {}
+  recipe_parameters: {}

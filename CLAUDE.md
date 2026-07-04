@@ -36,8 +36,14 @@ EDPS workflows are written in Python using the `edps` library. The `pyesorex` pa
 edps/
   andes/
     __init__.py
-    andes_wkf.py          # Main workflow definition (tasks, data sources, classification rules)
-  recipes/                # Directory for pyesorex recipe plugins (set via .env)
+    andes_wkf.py             # Tasks and subworkflows
+    andes_datasources.py     # Data sources (grouping, matching)
+    andes_classification.py  # Classification rules (raw, static, products)
+    andes_rules.py           # Function-based classification rules
+    andes_keywords.py        # Header keyword and setup-keyword definitions
+    andes_parameters.yaml    # Workflow/recipe parameter sets
+  recipes/                # pyesorex recipe plugins; currently dummy recipes
+  tests/                  # pytest suite + synthetic raw data generator
   docs/                   # EDPS documentation PDFs
   pyproject.toml          # uv project config
   .env                    # Sets PYESOREX_PLUGIN_DIR=./recipes
@@ -184,7 +190,7 @@ For a full workflow package, files are named:
 - `andes_task_functions.py` - auxiliary task functions
 - `andes_parameters.yaml` - parameters
 
-Currently, `andes_wkf.py` contains everything in one file. As the workflow grows it should be split per the convention above.
+The workflow is split per this convention (no `andes_task_functions.py` yet; task-factory helpers live in `andes_wkf.py`).
 
 ### Running EDPS
 
@@ -204,35 +210,31 @@ uv run edps -shutdown                                         # restart server a
 The processing order (each step depends on products from previous steps):
 
 1. **Detector characterization**
-   - BIAS (VIS only) -> `andes_cal_bias` -> MASTER_BIAS
+   - BIAS (VIS only) -> `andes_cal_bias` -> MASTER_BIAS, MASTER_BIAS_RES
    - DARK (VIS & NIR) -> `andes_cal_dark` -> MASTER_DARK, HOT_PIXEL_MASK
-   - LED flat-field / gain (VIS) -> `andes_cal_led` -> BAD_PIXEL_MASK, GAIN
-   - Linearity (NIR) -> `andes_cal_lin` -> LINEARITY_COEFFICIENTS
+   - LED flat-field / gain / linearity -> `andes_cal_led` -> BAD_PIXEL_MASK, DETFLAT, DETLIN (linearity is part of cal_led; there is no separate `andes_cal_lin` in spec v1.2)
    - Detector calibration utility -> `andes_util_detcal` (applies bias, dark, gain, bad pixels, linearity to any raw frame)
 
 2. **Geometric calibration**
-   - Order definition -> `andes_cal_orderdef` -> ORDER_TABLE
-   - Slit characterization -> `andes_cal_slit` -> SLIT_MODEL (tilt, curvature from FP/LFC lines)
+   - Order definition -> `andes_cal_orderdef` -> ORDER_TABLE_<slit>
+   - Slit characterization -> `andes_cal_slit` -> SLIT_CURVE_<slit> (tilt, curvature from FP/LFC lines)
 
 3. **Spectroscopic calibration**
-   - Flat-field, blaze, order profile -> `andes_cal_flat` -> MASTER_FLAT, BLAZE, ORDER_PROFILE
-   - LSF characterization -> `andes_cal_LSF` -> LSF_MODEL
-   - Wavelength calibration (FP) -> `andes_cal_wave_FP` -> WAVE_SOLUTION
-   - Wavelength calibration (LFC) -> `andes_cal_wave_LFC` -> WAVE_SOLUTION (alternative)
+   - Flat-field, blaze, order profile -> `andes_cal_flat` -> MASTER_FLAT_<slit>, BLAZE_<slit>, ORDER_PROFILE_<slit>
+   - LSF characterization -> `andes_cal_LSF` -> LSF_MODEL_<slit>
+   - Wavelength calibration (FP) -> `andes_cal_wave_FP` -> WAVE_TABLE/WAVE_MATRIX/DLL_MATRIX/S1D_WAVE_<slit>, WAVE_MAP
+   - Wavelength calibration (LFC) -> `andes_cal_wave_LFC` -> same products (alternative; FP is baseline)
    - Background subtraction -> `andes_util_bkgr` (inter-order scattered light)
-   - Extraction -> `andes_util_extract` (uses ORDER_TABLE, SLIT_MODEL, FLAT, BLAZE)
+   - Extraction -> `andes_util_extract` (uses ORDER_TABLE, SLIT_CURVE, MASTER_FLAT, BLAZE)
 
 4. **Cross-calibration**
-   - Contamination measurement -> `andes_cal_contam` -> CONTAM_FRAME
-   - Relative slit efficiency -> `andes_cal_rel_eff` -> REL_EFF_CURVE
-   - Flux calibration -> `andes_cal_flux` -> EFFICIENCY_CURVE
+   - Relative slit efficiency -> `andes_cal_rel_eff` -> REL_EFF_<slit>
+   - Flux calibration -> `andes_cal_flux` -> ABS_EFF_<slit>
+   - Telluric standard -> `andes_cal_telluric_std` -> TELL_MODEL
 
 5. **Science reduction**
-   - Science -> `andes_science` (applies all calibrations, extracts spectra, drift correction, sky subtraction, flux calibration, telluric correction)
-
-6. **Additional calibrations**
-   - RV standard -> `andes_cal_RV_std`
-   - Telluric standard -> `andes_cal_telluric_std`
+   - Science -> `andes_science` (applies all calibrations, drift correction, sky subtraction, flux calibration, telluric correction)
+   - RV standards are reduced by `andes_science` via a separate task (`rv_std`); spec v1.2 dropped `andes_cal_RV_std` and `andes_cal_contam`
 
 ### Modular Recipe Design
 
@@ -322,14 +324,29 @@ So for generic utility recipes like `andes_util_detcal`: within a subworkflow th
 
 ### Data Classification Keywords
 
-Files are classified by FITS headers:
+Files are classified by FITS headers (resolved naming, see andes_classification.py):
 - `instrume`: "ANDES"
-- `dpr.catg`: "CALIB" or "SCIENCE"
-- `dpr.type`: identifies the frame type (e.g. "BIAS", "DARK", "FLAT,FLAT,FLAT", "OBJECT,FP,SKY")
-- `dpr.tech`: identifies the technique/mode (e.g. "IMAGE,RIZ", "ECHELLE,RIZ")
+- `dpr.catg`: "CALIB", "SCIENCE" or "TECHNICAL" (LED flats)
+- `dpr.type`: `<KIND>,<A>,<C>,<B>` for echelle calibrations (KIND one of ORDERDEF, SLIT, LSF, FLAT, WAVE, EFF, STD; sources one of LAMP, OFF, FP, LFC, HCL, SKY, FLUX, RV, TELLURIC), plain `<A>,<C>,<B>` for science (e.g. "OBJECT,FP,SKY"), single-slot for IFU (e.g. "FLAT,LAMP", "OBJECT")
+- `dpr.tech`: "IMAGE", "ECHELLE,FIBER" or "ECHELLE,IFU", optionally with a third element (SWAPPING/OFFSET/DITHERING)
+- `seq.arm`: spectrograph (UBV, RIZ, YJH, K); `ins.mode`: SL-UNI or IFU-AO; `det.binx`/`det.biny`: binning
 
-The `dpr.type` values are comma-separated when describing what's in each sub-slit (A, C, B). E.g. "OBJECT,FP,SKY" means object in A, FP calibration in C, sky in B.
+Sub-slit order in comma-separated values is A, C, B (calibration fibre in the middle). The spectrograph is NOT encoded in dpr.tech; grouping/matching runs over the setup keywords, so one task graph serves all arms, binnings and modes. There is a 1:1 correspondence between raw DPR.TYPE kinds, templates and recipes.
+
+Products carry per-slit PRO.CATG suffixes `_A`, `_B`, `_C` or `_IFU`. Products with the same role from different recipes get origin prefixes to keep PRO.CATG unambiguous (S1D_WAVE_*, S1D_STD_FLUX_*, S1D_STD_TELL_*; bare S1D_*/SS1D_* are science products).
+
+### Testing
+
+```bash
+uv run pytest                                          # classification + task-graph tests
+uv run python tests/make_test_data.py <dir>            # synthetic raw data (RIZ SL, YJH SL, YJH IFU)
+uv run edps -w andes.andes_wkf -i <dir> -c             # classify
+uv run edps -w andes.andes_wkf -i <dir> -od            # organize (jobs + associations, no execution)
+PYESOREX_PLUGIN_DIR=$PWD/recipes uv run edps -w andes.andes_wkf -i <dir> -t science   # full run with dummy recipes
+```
+
+`recipes/andes_dummy_recipes.py` provides dummy pyesorex implementations of all 16 recipes; they write empty FITS products with the correct PRO.CATG and inherit setup keywords, so the whole cascade executes end-to-end.
 
 ### Current State
 
-The `andes_wkf.py` implements RIZ-only subworkflows for dark, flat, wavecal, and science reduction, using the modular detcal/extract/bkgr pattern. Classification rules and data sources are simplified (match on `instrume` only). To be extended with orderdef, slit characterization, additional spectrographs, and refined classification/association rules.
+Full workflow per spec E-AND-SW-SPE-09-00-002 v1.2: all 16 recipes as tasks/subworkflows (bias, dark, led, orderdef, slit, lsf, flat, wave_fp, wave_lfc, rel_eff, flux, telluric, science, rv_std + detcal/bkgr/extract steps). Wave FP/LFC are alternatives (FP preferred). Detector calibrations are optional associations (min_ret=0) since their availability is arm-dependent (no bias for NIR). Static tables (HCL_LINES_TABLE, STD_STAR_TABLE, STD_TELL_TABLE) are matched on instrume+seq.arm. Naming inconsistencies in the spec were resolved unilaterally and need consortium review; see the naming conventions above.
