@@ -28,26 +28,29 @@ dark = raw_source("DARK", [cls.dark_class], kwd.det_setup)
 ledff = raw_source("LEDFF", [cls.ledff_class], kwd.det_setup)
 
 # per-slit frames of one template execution form a single group, whether the
-# template exposes slits separately (A/C/B), together (ACB) or as IFU
-orderdef = raw_source("ORDERDEF", [cls.orderdef_a_class, cls.orderdef_c_class,
-                                   cls.orderdef_b_class, cls.orderdef_acb_class,
+# template exposes the slits separately (A/B) or as IFU
+orderdef = raw_source("ORDERDEF", [cls.orderdef_a_class, cls.orderdef_b_class,
                                    cls.orderdef_ifu_class], kwd.inst_setup)
 
-slit = raw_source("SLIT", [cls.slit_class, cls.slit_ifu_class], kwd.inst_setup)
-lsf = raw_source("LSF", [cls.lsf_class, cls.lsf_ifu_class], kwd.inst_setup)
+# slit-mask frames feed both andes_cal_slit and andes_cal_LSF (the manual
+# defines no LSF raw type; see calibration_plan.yaml reconciliation 3)
+slit = raw_source("SLITMASK", [cls.slitmask_class, cls.slitmask_ifu_class],
+                  kwd.inst_setup)
 
-flat = raw_source("FLAT", [cls.flat_a_class, cls.flat_c_class, cls.flat_b_class,
-                           cls.flat_acb_class, cls.flat_ifu_class], kwd.inst_setup)
+flat = raw_source("FLAT", [cls.flat_a_class, cls.flat_b_class,
+                           cls.flat_ifu_class], kwd.inst_setup)
 
 wave_fp = raw_source("WAVE_FP", [cls.wave_hcl_a_class, cls.wave_hcl_b_class,
-                                 cls.wave_fp_class, cls.wave_hcl_ifu_class], kwd.inst_setup)
-wave_lfc = raw_source("WAVE_LFC", [cls.wave_lfc_class, cls.wave_lfc_ifu_class], kwd.inst_setup)
+                                 cls.wave_fp_class, cls.wave_hcl_ifu_class,
+                                 cls.wave_fp_ifu_class], kwd.inst_setup)
+wave_lfc = raw_source("WAVE_LFC", [cls.wave_lfc_a_class, cls.wave_lfc_b_class,
+                                   cls.wave_lfc_ifu_class], kwd.inst_setup)
 
 eff = raw_source("EFF", [cls.eff_class, cls.eff_ifu_class], kwd.inst_setup)
 std_flux = raw_source("STD_FLUX", [cls.std_flux_class, cls.std_flux_ifu_class], kwd.inst_setup)
 std_telluric = raw_source("STD_TELLURIC", [cls.std_telluric_class,
                                            cls.std_telluric_ifu_class], kwd.inst_setup)
-std_rv = raw_source("STD_RV", [cls.std_rv_class], kwd.inst_setup)
+std_rv = raw_source("STD_RV", [cls.std_rv_class, cls.std_rv_ifu_class], kwd.inst_setup)
 
 science = raw_source("SCIENCE", [cls.science_sl_class, cls.science_ifu_class], kwd.inst_setup)
 

@@ -9,7 +9,7 @@
 #     nights from this file; assert every planned exposure classifies to
 #     exactly one tag and that a plan-generated night organizes into a
 #     complete reduction cascade (edps -od)
-#   - E2E repo: drive simulation of real-pixel raw frames (see E2E/src/dpr_plan.md)
+#   - E2E repo: drive simulation of real-pixel raw frames (see E2E/src/dpr_summary.md)
 #
 # Sources:
 #   - AD2: E-AND-SI-PLA-01-00-001 v0.9 Science Operation and Calibration Plan
@@ -23,29 +23,36 @@
 meta:
   instrument: ANDES
   status: draft
-  version: 0.1
-  updated: 2026-07-04
+  version: 0.2
+  updated: 2026-07-07
 
 conventions:
-  # DPR.TYPE grammar: "<KIND>,<A>,<C>,<B>" for SL echelle calibrations
-  # (A/B = the two pseudo-slits, C = calibration fibre between them);
-  # "<KIND>,<slit>[,<calfib>]" for IFU; plain "<A>,<C>,<B>" for science.
+  # DPR.TYPE grammar per Templates Manual E-AND-SW-MAN-06-00-001 v2.0
+  # (Tables 2 and 5; adopted over the DRL spec's A,C,B reading, see
+  # reconciliation item 10): "<KIND>,<A>,<B>" for SL echelle calibrations,
+  # "<KIND>,<slit>" for IFU; science frames have no KIND: "<A>,<B>" (SL)
+  # or "OBJECT"/"SKY" (IFU). The calibration fibre C is NOT part of
+  # DPR.TYPE (ESO-044156 v7 compliance); its source is carried by a
+  # dedicated keyword (ins.calfib below, name pending the ICD).
   # See edps repo, andes/andes_classification.py.
-  dpr_slot_order: [A, C, B]
+  dpr_slot_order: [A, B]
+  calfib_keyword: ins.calfib
   source_tokens:
     LAMP: "continuum lamp (simulator source: flat)"
     FP: "Fabry-Perot etalon (simulator source: fp)"
     LFC: "laser frequency comb, upgrade path (simulator source: lfc)"
-    HCL: "hollow-cathode lamp ThAr/UNe (simulator source: hcl, to be added)"
+    HCL: "hollow-cathode lamp ThAr/UNe (simulator source: hcl)"
     LED: "detector flat-field LEDs, no spectrograph light path"
     SKY: "sky light (twilight or night)"
     OBJECT: "astronomical target"
+    WAVE: "simultaneous wavelength reference in fiber B (TC mode); lamp is a template parameter, simulator default: fp"
     OFF: "slit/fibre dark"
   setup_keywords: [instrume, seq.arm, ins.mode, det.binx, det.biny]
   proposed_keywords:
+    ins.calfib: "calibration fibre source (FP/HCL/LFC/LAMP/OFF); the Templates Manual's 'dedicated keyword' for fiber C, name pending ICD"
     det.readout: "readout mode (fast/slow); AD2 configs are binning+readout pairs"
     ins.ifu.scale: "IFU spaxel scale (7/16/35/100 mas); separate calibrations per scale"
-    ins.mask: "fibre mask position (M1/M2/M3) for the slit-mask procedures"
+    ins.mask: "fibre mask position (M1/M2/M3) for the slit-mask procedures; not in the Templates Manual (mask handling is a template parameter there)"
 
 setups:
   arms:
@@ -137,7 +144,9 @@ procedures:
     frequency: daily
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
-      - {type: "FLAT,LAMP,LAMP,LAMP", n: 10, exptime_s: 60}
+      # AD2 combined flat (all slits lit); manual Table 5 only lists the
+      # one-slit-at-a-time pair FLAT,LAMP,OFF / FLAT,OFF,LAMP (recon 2)
+      - {type: "FLAT,LAMP,LAMP", n: 10, exptime_s: 60, keywords: {ins.calfib: LAMP}}
     recipe: andes_cal_flat
     workflow_task: flat
 
@@ -149,8 +158,8 @@ procedures:
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
       # NIR flats come as lamp-on/lamp-off pairs for background subtraction
-      - {type: "FLAT,LAMP,LAMP,LAMP", n: 10, exptime_s: 60}
-      - {type: "FLAT,OFF,OFF,OFF", n: 10, exptime_s: 60, note: "lamp-off; no DPR type in DRL spec yet"}
+      - {type: "FLAT,LAMP,LAMP", n: 10, exptime_s: 60, keywords: {ins.calfib: LAMP}}
+      - {type: "FLAT,OFF,OFF", n: 10, exptime_s: 60, keywords: {ins.calfib: OFF}, note: "lamp-off; no DPR type in the manual or DRL spec yet"}
     recipe: andes_cal_flat
     workflow_task: flat
 
@@ -162,8 +171,8 @@ procedures:
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
       # AD2: FP illuminates ONE aperture at a time, plus the calibration fibre
-      - {type: "WAVE,FP,FP,OFF", n: 2, exptime_s: 60}
-      - {type: "WAVE,OFF,FP,FP", n: 2, exptime_s: 60}
+      - {type: "WAVE,FP,OFF", n: 2, exptime_s: 60, keywords: {ins.calfib: FP}}
+      - {type: "WAVE,OFF,FP", n: 2, exptime_s: 60, keywords: {ins.calfib: FP}}
     recipe: andes_cal_wave_FP
     workflow_task: wave_fp
 
@@ -174,8 +183,8 @@ procedures:
     frequency: daily
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
-      - {type: "WAVE,HCL,FP,OFF", n: 2, exptime_s: 120}
-      - {type: "WAVE,OFF,FP,HCL", n: 2, exptime_s: 120}
+      - {type: "WAVE,HCL,OFF", n: 2, exptime_s: 120, keywords: {ins.calfib: FP}}
+      - {type: "WAVE,OFF,HCL", n: 2, exptime_s: 120, keywords: {ins.calfib: FP}}
     recipe: andes_cal_wave_FP
     workflow_task: wave_fp
 
@@ -186,11 +195,55 @@ procedures:
     frequency: daily
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
-      # cross-calibration of the two apertures; calibration fibre dark per AD2
-      - {type: "WAVE,FP,OFF,HCL", n: 2, exptime_s: 120}
-      - {type: "WAVE,HCL,OFF,FP", n: 2, exptime_s: 120}
+      # cross-calibration of the two apertures; calibration fibre dark per
+      # AD2 -- these now match the manual's WAVE,FP,HCL / WAVE,HCL,FP types
+      - {type: "WAVE,FP,HCL", n: 2, exptime_s: 120, keywords: {ins.calfib: OFF}}
+      - {type: "WAVE,HCL,FP", n: 2, exptime_s: 120, keywords: {ins.calfib: OFF}}
     recipe: andes_cal_wave_FP
     workflow_task: wave_fp
+
+  # --- proposed additions: Templates Manual types absent from AD2 ----------
+  # The DRS cascade cannot run without ORDER_TABLE products and per-slit
+  # flats (reconciliation 2); the manual's templates are included here as
+  # proposed until AD2 adds the corresponding CPs.
+
+  - cp: C-ord-SL-UNI
+    status: proposed
+    template: ANDES_SL-UNI_cal_OrderDef
+    set: daily
+    applies_to: {arms: [UBV, RIZ, YJH], modes: [SL-UNI], configs: daily_vis}
+    frequency: daily
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "ORDERDEF,LAMP,OFF", n: 1, exptime_s: 60, keywords: {ins.calfib: OFF}}
+      - {type: "ORDERDEF,OFF,LAMP", n: 1, exptime_s: 60, keywords: {ins.calfib: OFF}}
+    recipe: andes_cal_orderdef
+    workflow_task: orderdef
+
+  - cp: C-ord-IFU
+    status: proposed
+    template: ANDES_IFU-AO_cal_OrderDef
+    set: when-used
+    applies_to: {arms: [YJH], modes: [IFU-AO], per: ifu_scale}
+    frequency: when-used
+    dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
+    exposures:
+      - {type: "ORDERDEF,LAMP", n: 1, exptime_s: 60}
+    recipe: andes_cal_orderdef
+    workflow_task: orderdef
+
+  - cp: C-ff-slits-SL-UNI
+    status: proposed
+    template: ANDES_SL-UNI_cal_Flat
+    set: daily
+    applies_to: {arms: [UBV, RIZ, YJH], modes: [SL-UNI], configs: daily_vis}
+    frequency: daily
+    dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
+    exposures:
+      - {type: "FLAT,LAMP,OFF", n: 5, exptime_s: 60, keywords: {ins.calfib: OFF}}
+      - {type: "FLAT,OFF,LAMP", n: 5, exptime_s: 60, keywords: {ins.calfib: OFF}}
+    recipe: andes_cal_flat
+    workflow_task: flat
 
   - cp: C-slit-SL-UNI
     template: ANDES_SL-UNI_cal_slitmask
@@ -201,11 +254,15 @@ procedures:
     exposures:
       # fibre masking system: each mask illuminates a subset of fibres
       # (M1/M2 halves, or M1/M2/M3 thirds - under verification in AD2);
-      # source is FP or continuum. Proposed KIND pending reconciliation #3.
-      - {type: "SLIT,FP,FP,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M1}}
-      - {type: "SLIT,FP,FP,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M2}}
-      - {type: "SLIT,FP,FP,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M3}}
-    recipe: "TBD: andes_cal_slit / andes_cal_orderdef / andes_cal_LSF"
+      # manual defines the one-slit-at-a-time SLITMASK pair (Table 5),
+      # mask position via ins.mask pending reconciliation #3.
+      - {type: "SLITMASK,FP,OFF", n: 1, exptime_s: 120, keywords: {ins.mask: M1, ins.calfib: FP}}
+      - {type: "SLITMASK,OFF,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M1, ins.calfib: FP}}
+      - {type: "SLITMASK,FP,OFF", n: 1, exptime_s: 120, keywords: {ins.mask: M2, ins.calfib: FP}}
+      - {type: "SLITMASK,OFF,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M2, ins.calfib: FP}}
+      - {type: "SLITMASK,FP,OFF", n: 1, exptime_s: 120, keywords: {ins.mask: M3, ins.calfib: FP}}
+      - {type: "SLITMASK,OFF,FP", n: 1, exptime_s: 120, keywords: {ins.mask: M3, ins.calfib: FP}}
+    recipe: "andes_cal_slit (+ andes_cal_LSF, see reconciliation #3)"
     workflow_task: slit
 
   # --- when-used-set --------------------------------------------------------
@@ -224,7 +281,7 @@ procedures:
     dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
     exposures:
       - {type: "FLAT,LAMP", n: 8, exptime_s: 60}
-      - {type: "FLAT,OFF", n: 8, exptime_s: 60, note: "lamp-off; no DPR type in DRL spec yet"}
+      - {type: "FLAT,OFF", n: 8, exptime_s: 60, note: "lamp-off; no DPR type in the manual or DRL spec yet"}
     recipe: andes_cal_flat
     workflow_task: flat
 
@@ -235,7 +292,7 @@ procedures:
     frequency: when-used
     dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
     exposures:
-      - {type: "WAVE,FP,FP", n: 2, exptime_s: 60}
+      - {type: "WAVE,FP", n: 2, exptime_s: 60, keywords: {ins.calfib: FP}}
     recipe: andes_cal_wave_FP
     workflow_task: wave_fp
 
@@ -246,7 +303,7 @@ procedures:
     frequency: when-used
     dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
     exposures:
-      - {type: "WAVE,HCL,FP", n: 2, exptime_s: 120}
+      - {type: "WAVE,HCL", n: 2, exptime_s: 120, keywords: {ins.calfib: FP}}
     recipe: andes_cal_wave_FP
     workflow_task: wave_fp
 
@@ -261,8 +318,8 @@ night_calibrations:
     applies_to: {modes: [SL-UNI, IFU-AO]}
     dpr: {catg: CALIB}
     exposures:
-      - {type: "EFF,SKY,OFF,SKY", tech: "ECHELLE,FIBER", n: tbd, note: "relative slit efficiency"}
-      - {type: "EFF,SKY", tech: "ECHELLE,IFU", n: tbd}
+      - {type: "FLAT,SKY,SKY", tech: "ECHELLE,FIBER", n: tbd, keywords: {ins.calfib: OFF}, note: "relative slit efficiency (manual: skyFlat)"}
+      - {type: "FLAT,SKY", tech: "ECHELLE,IFU", n: tbd}
     recipe: andes_cal_rel_eff
     workflow_task: rel_eff
     note: "availability of ELT twilight time unclear (DRL Sect. 6.2.1)"
@@ -271,8 +328,8 @@ night_calibrations:
     template: ANDES_SL-UNI_specphot
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
-      - {type: "STD,FLUX,OFF,SKY", n: 1}
-      - {type: "STD,SKY,OFF,FLUX", n: 1, note: "mirrored aperture use"}
+      - {type: "STD,FLUX,SKY", n: 1, keywords: {ins.calfib: OFF}}
+      - {type: "STD,SKY,FLUX", n: 1, keywords: {ins.calfib: OFF}, note: "mirrored aperture use"}
     recipe: andes_cal_flux
     workflow_task: flux
 
@@ -280,8 +337,8 @@ night_calibrations:
     template: ANDES_SL-UNI_Telluric
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
-      - {type: "STD,TELLURIC,OFF,SKY", n: 1}
-      - {type: "STD,SKY,OFF,TELLURIC", n: 1}
+      - {type: "STD,TELLURIC,SKY", n: 1, keywords: {ins.calfib: OFF}}
+      - {type: "STD,SKY,TELLURIC", n: 1, keywords: {ins.calfib: OFF}}
     recipe: andes_cal_telluric_std
     workflow_task: telluric
 
@@ -289,8 +346,8 @@ night_calibrations:
     template: ANDES_SL-UNI_RVstd
     dpr: {catg: CALIB, tech: "ECHELLE,FIBER"}
     exposures:
-      - {type: "STD,RV,FP,SKY", n: 1}
-      - {type: "STD,SKY,FP,RV", n: 1}
+      - {type: "STD,RV,SKY", n: 1, keywords: {ins.calfib: FP}}
+      - {type: "STD,SKY,RV", n: 1, keywords: {ins.calfib: FP}}
     recipe: andes_science
     workflow_task: rv_std
 
@@ -305,22 +362,32 @@ night_calibrations:
 observations:
 
   - name: sl_stare
-    templates: [ANDES_SL-UNI_acq, "ANDES_SL-UNI-TS/TC_obs_*"]
+    templates: [ANDES_SL-UNI_acq, "ANDES_SL-UNI-TS_obs_stare"]
     dpr: {catg: SCIENCE, tech: "ECHELLE,FIBER"}
     exposures:
-      - {type: "OBJECT,FP,SKY", note: "target + simultaneous FP reference + sky"}
-      - {type: "OBJECT,DARK,SKY", note: "no simultaneous reference"}
-      - {type: "OBJECT,LFC,SKY", note: "LFC reference; upgrade path"}
+      - {type: "OBJECT,SKY", keywords: {ins.calfib: FP}, note: "target + sky, simultaneous FP drift reference on fiber C"}
+      - {type: "OBJECT,SKY", keywords: {ins.calfib: OFF}, note: "no simultaneous reference"}
+      - {type: "OBJECT,SKY", keywords: {ins.calfib: LFC}, note: "LFC reference; upgrade path"}
+    recipe: andes_science
+    workflow_task: science
+
+  - name: sl_tc
+    templates: ["ANDES_SL-UNI-TC_obs_stare"]
+    dpr: {catg: SCIENCE, tech: "ECHELLE,FIBER"}
+    exposures:
+      # target-calibration mode: fiber B carries the wavelength reference
+      # (lamp is a template parameter per the Templates Manual)
+      - {type: "OBJECT,WAVE", keywords: {ins.calfib: FP}}
     recipe: andes_science
     workflow_task: science
 
   - name: sl_swap
-    templates: ["ANDES_SL-UNI-TS_obs_* (swapping)"]
+    templates: ["ANDES_SL-UNI-TS_obs_swap"]
     dpr: {catg: SCIENCE, tech: "ECHELLE,FIBER,SWAPPING"}
     exposures:
       # ABBA sequence within one template execution
-      - {type: "OBJECT,FP,SKY", n: 2}
-      - {type: "SKY,FP,OBJECT", n: 2}
+      - {type: "OBJECT,SKY", n: 2, keywords: {ins.calfib: FP}}
+      - {type: "SKY,OBJECT", n: 2, keywords: {ins.calfib: FP}}
     recipe: andes_science
     workflow_task: science
 
@@ -342,26 +409,31 @@ reconciliation:
   - id: 1
     topic: wave illumination patterns
     issue: >
-      AD2 takes wave frames one aperture at a time (WAVE,FP,FP,OFF /
-      WAVE,OFF,FP,FP etc.) plus cross-calibration pairs with dark calibration
-      fibre (WAVE,FP,OFF,HCL / WAVE,HCL,OFF,FP). DRL spec 4.3.8 instead
-      defines WAVE,HCL,FP,FP / WAVE,FP,FP,HCL / WAVE,FP,FP,FP (both apertures
-      lit). The current workflow classifies only the DRL trio; the AD2
-      variants would be unclassified today.
+      AD2 takes wave frames one aperture at a time (now encoded WAVE,FP,OFF /
+      WAVE,OFF,FP with ins.calfib=FP) which the Templates Manual Table 5 does
+      not list and the workflow does not classify. The AD2 cross-calibration
+      pairs with dark calibration fibre now map onto the manual's
+      WAVE,FP,HCL / WAVE,HCL,FP types (with ins.calfib=OFF) and classify
+      fine. DRL spec 4.3.8's both-apertures-lit reading is superseded by the
+      manual's grammar (see item 10).
   - id: 2
-    topic: order definition
+    topic: order definition and combined flats
     issue: >
-      AD2 has no order-definition CP and no per-slit flats; DRL spec defines
-      ORDERDEF_A/C/B/ACB and FLAT_A/C/B raw types. Either dedicated templates
-      get added to the calibration plan, or order definition must run on the
-      combined flat (FLAT,LAMP,LAMP,LAMP) and/or the slit-mask frames.
+      AD2 has no order-definition CP; the Templates Manual defines
+      ANDES_SL-UNI_cal_OrderDef with ORDERDEF,LAMP,OFF / ORDERDEF,OFF,LAMP
+      (one slit at a time, no C or combined variant). AD2's daily combined
+      flat (now encoded FLAT,LAMP,LAMP + ins.calfib=LAMP) is not in the
+      manual's list (FLAT,LAMP,OFF / FLAT,OFF,LAMP) and stays unclassified.
+      How the calibration fibre C gets order-defined and flat-fielded is
+      open in both documents now that C left the DPR grammar.
   - id: 3
-    topic: slit-mask frames
+    topic: slit-mask frames and LSF
     issue: >
-      AD2's C-slit-mX CPs (fibre masks M1/M2/M3, source FP or continuum) have
-      no DPR type in the DRL spec; proposed SLIT,... with new keyword ins.mask.
-      Consuming recipe unclear (cal_slit vs cal_orderdef vs cal_LSF); DRL's
-      separate LSF raw type has no CP in AD2 at all.
+      The Templates Manual defines SLITMASK,FP,OFF / SLITMASK,OFF,FP
+      (CALIB or TECHNICAL) but no mask-position keyword (proposed ins.mask),
+      no IFU variant, and no LSF raw type (DRL spec had LSF,...). The
+      workflow keeps the LSF recipe fed from the SLITMASK frames; AD2's
+      whole-slit mask exposures are encoded as the manual's per-slit pairs.
   - id: 4
     topic: NIR lamp-off frames
     issue: >
@@ -383,9 +455,10 @@ reconciliation:
       mix scales within one calibration group.
   - id: 7
     topic: IFU FP-only wave frames
+    status: resolved
     issue: >
-      C-wl-FP-IFU produces WAVE,FP,FP (IFU); the workflow's IFU wave rule
-      currently accepts only WAVE,HCL,FP.
+      RESOLVED by item 10: the Templates Manual lists WAVE,FP / WAVE,HCL /
+      WAVE,LFC for the IFU and the workflow now classifies all three.
   - id: 8
     topic: template names
     issue: >
@@ -400,3 +473,19 @@ reconciliation:
       all wave exposures of a day share one tpl.start (one EDPS group) or six
       must be agreed - the workflow currently groups by tpl.start and needs
       the HCL and FP frames in one group.
+  - id: 10
+    topic: DPR.TYPE grammar (slot count and calibration fibre)
+    status: resolved
+    issue: >
+      RESOLVED in favor of the Templates Manual E-AND-SW-MAN-06-00-001 v2.0
+      (2026-05-18, newer than DRL spec v1.2): DPR.TYPE carries two slots,
+      first = fiber A, second = fiber B; the calibration fibre C is NOT part
+      of DPR.TYPE (ESO-044156 v7) but goes into a dedicated keyword (proposed
+      ins.calfib, name pending ICD). Further manual-vs-DRL deltas adopted:
+      SLITMASK,FP,OFF / SLITMASK,OFF,FP replaces SLIT,FP,FP,FP; sky flats are
+      FLAT,SKY,SKY / FLAT,SKY (was EFF,...); no LSF raw type (LSF recipe fed
+      from SLITMASK frames); science is OBJECT,SKY / SKY,OBJECT / OBJECT,WAVE
+      / WAVE,OBJECT (TC) with the sim-cal lamp a template parameter, not a
+      DPR value. The DRL spec Ch. 4.3 and AD4 need to be updated to match;
+      the workflow classification, this plan and the E2E simulator follow
+      the manual as of 2026-07-07.

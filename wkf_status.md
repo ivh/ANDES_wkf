@@ -103,3 +103,28 @@ Results:
    select what they need (or add `with_input_filter` later).
 8. Parameter sets named `science_parameters`/`qc1_parameters` (EDPS client
    default); currently empty placeholders.
+
+## Round 2 — Templates Manual grammar (2026-07-07)
+
+Adapted the DPR grammar to the Templates Manual E-AND-SW-MAN-06-00-001 v2.0
+(2026-05-18, newer than DRL spec v1.2), which contradicts the Round 1
+reading; decision recorded as reconciliation item 10 in
+`calibration_plan.yaml`.
+
+- `DPR.TYPE` now carries two slots (first = fiber A, second = fiber B); the
+  calibration fibre C moved to the dedicated keyword `ins.calfib`
+  (FP/HCL/LFC/LAMP/OFF; name pending ICD, per ESO-044156 C must not be in
+  DPR.TYPE). Not used in classification.
+- Type changes: `SLITMASK,FP,OFF`/`SLITMASK,OFF,FP` (CALIB or TECHNICAL)
+  replace `SLIT,...`; sky flats are `FLAT,SKY,SKY`/`FLAT,SKY` (were
+  `EFF,...`; tag names EFF/EFF_IFU kept); WAVE split per slit
+  (`WAVE,HCL,FP` = WAVE_HCL_A etc., LFC now WAVE_LFC_A/WAVE_LFC_B); IFU
+  gains WAVE_FP_IFU and STD_RV_IFU; ORDERDEF/FLAT lose the C and ACB
+  variants (C-fibre order definition and flat are open, reconciliation 2).
+- No LSF raw type in the manual: the `lsf` task now consumes the SLITMASK
+  frames (reconciliation 3); the LSF datasource is gone.
+- Science: `OBJECT,SKY`/`SKY,OBJECT` (TS), `OBJECT,WAVE`/`WAVE,OBJECT`
+  (TC, sim-cal lamp is a template parameter), IFU unchanged.
+- `make_test_data.py` and the pytest samples rewritten accordingly
+  (57 tests green). Real-pixel raw frames come from the E2E simulator
+  (`andes-sim make-raw` / `night`), which follows the same grammar.

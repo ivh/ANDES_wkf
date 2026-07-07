@@ -11,6 +11,12 @@ ins_mode = "ins.mode"    # observing mode: SL-UNI, IFU-AO
 det_binx = "det.binx"
 det_biny = "det.biny"
 
+# calibration fibre (C) source: FP, HCL, LFC, LAMP or OFF. The Templates
+# Manual (E-AND-SW-MAN-06-00-001 v2.0) keeps C out of DPR.TYPE per
+# ESO-044156 and mandates a dedicated keyword; the name is ours pending
+# the ICD. Informational for recipes, not used in classification.
+ins_calfib = "ins.calfib"
+
 tpl_start = "tpl.start"
 mjd_obs = "mjd-obs"
 

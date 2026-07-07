@@ -160,7 +160,9 @@ flat_task = flat_swkf(bias_task, dark_task, led_task, orderdef_task, slit_task)
 
 @subworkflow("lsf", "")
 def lsf_swkf(bias_task, dark_task, led_task, orderdef_task, slit_task):
-    detcal = detcal_task("lsf_detcal", ds.lsf, bias_task, dark_task, led_task)
+    # no LSF raw type in the Templates Manual: the LSF recipe consumes the
+    # slit-mask frames (reconciliation 3 in calibration_plan.yaml)
+    detcal = detcal_task("lsf_detcal", ds.slit, bias_task, dark_task, led_task)
     return (task("lsf")
             .with_recipe("andes_cal_LSF")
             .with_main_input(detcal)

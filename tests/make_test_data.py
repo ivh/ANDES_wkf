@@ -4,6 +4,9 @@ Usage: uv run python tests/make_test_data.py <output_dir>
 
 Covers three instrument setups: RIZ SL-UNI (VIS, with bias), YJH SL-UNI
 (NIR, no bias) and YJH IFU-AO, plus the static calibration tables.
+Grammar: Templates Manual v2.0 (two slots A,B; calibration fibre C in
+ins.calfib). Real-pixel raw frames come from the E2E simulator instead
+(andes-sim make-raw / night); this header-only generator stays for fast CI.
 """
 
 import itertools
@@ -35,12 +38,14 @@ def calib(dpr_type, tech, tpl, catg="CALIB", **extra):
             "tpl.start": tpl, "det.binx": 1, "det.biny": 1, **extra}
 
 
-def sl(dpr_type, tpl, tech="ECHELLE,FIBER", **extra):
-    return calib(dpr_type, tech, tpl, **{"ins.mode": "SL-UNI", **extra})
+def sl(dpr_type, tpl, tech="ECHELLE,FIBER", calfib="OFF", **extra):
+    return calib(dpr_type, tech, tpl,
+                 **{"ins.mode": "SL-UNI", "ins.calfib": calfib, **extra})
 
 
-def ifu(dpr_type, tpl, tech="ECHELLE,IFU", **extra):
-    return calib(dpr_type, tech, tpl, **{"ins.mode": "IFU-AO", **extra})
+def ifu(dpr_type, tpl, tech="ECHELLE,IFU", calfib="OFF", **extra):
+    return calib(dpr_type, tech, tpl,
+                 **{"ins.mode": "IFU-AO", "ins.calfib": calfib, **extra})
 
 
 def make_setup(outdir, arm, mode, mjd0, with_bias):
@@ -51,38 +56,43 @@ def make_setup(outdir, arm, mode, mjd0, with_bias):
     frames += [calib("FLAT,LAMP", "IMAGE", f"{arm}-led", catg="TECHNICAL")] * 4
 
     if mode == "SL-UNI":
-        frames += [sl("ORDERDEF,LAMP,OFF,OFF", f"{arm}-ord"),
-                   sl("ORDERDEF,OFF,LAMP,OFF", f"{arm}-ord"),
-                   sl("ORDERDEF,OFF,OFF,LAMP", f"{arm}-ord"),
-                   sl("SLIT,FP,FP,FP", f"{arm}-slit"),
-                   sl("LSF,FP,FP,FP", f"{arm}-lsf"),
-                   sl("FLAT,LAMP,OFF,OFF", f"{arm}-flat"),
-                   sl("FLAT,OFF,LAMP,OFF", f"{arm}-flat"),
-                   sl("FLAT,OFF,OFF,LAMP", f"{arm}-flat"),
-                   sl("WAVE,HCL,FP,FP", f"{arm}-wave"),
-                   sl("WAVE,FP,FP,HCL", f"{arm}-wave"),
-                   sl("WAVE,FP,FP,FP", f"{arm}-wave"),
-                   sl("WAVE,LFC,FP,LFC", f"{arm}-lfc"),
-                   sl("EFF,SKY,OFF,SKY", f"{arm}-eff"),
-                   sl("EFF,SKY,OFF,SKY", f"{arm}-eff"),
-                   sl("STD,FLUX,OFF,SKY", f"{arm}-flux"),
-                   sl("STD,TELLURIC,OFF,SKY", f"{arm}-tell"),
-                   sl("STD,RV,FP,SKY", f"{arm}-rv"),
-                   sl("OBJECT,FP,SKY", f"{arm}-sci", catg="SCIENCE"),
+        frames += [sl("ORDERDEF,LAMP,OFF", f"{arm}-ord"),
+                   sl("ORDERDEF,OFF,LAMP", f"{arm}-ord"),
+                   sl("SLITMASK,FP,OFF", f"{arm}-slit", calfib="FP"),
+                   sl("SLITMASK,OFF,FP", f"{arm}-slit", calfib="FP"),
+                   sl("FLAT,LAMP,OFF", f"{arm}-flat"),
+                   sl("FLAT,OFF,LAMP", f"{arm}-flat"),
+                   sl("WAVE,HCL,FP", f"{arm}-wave", calfib="OFF"),
+                   sl("WAVE,FP,HCL", f"{arm}-wave", calfib="OFF"),
+                   sl("WAVE,FP,FP", f"{arm}-wave", calfib="FP"),
+                   sl("WAVE,LFC,FP", f"{arm}-lfc", calfib="FP"),
+                   sl("WAVE,FP,LFC", f"{arm}-lfc", calfib="FP"),
+                   sl("FLAT,SKY,SKY", f"{arm}-eff"),
+                   sl("FLAT,SKY,SKY", f"{arm}-eff"),
+                   sl("STD,FLUX,SKY", f"{arm}-flux"),
+                   sl("STD,TELLURIC,SKY", f"{arm}-tell"),
+                   sl("STD,RV,SKY", f"{arm}-rv", calfib="FP"),
+                   sl("OBJECT,SKY", f"{arm}-sci", calfib="FP", catg="SCIENCE"),
+                   sl("OBJECT,WAVE", f"{arm}-tc", calfib="FP", catg="SCIENCE"),
                    # ABBA swapping sequence in one template
-                   sl("OBJECT,FP,SKY", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING", catg="SCIENCE"),
-                   sl("SKY,FP,OBJECT", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING", catg="SCIENCE"),
-                   sl("SKY,FP,OBJECT", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING", catg="SCIENCE"),
-                   sl("OBJECT,FP,SKY", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING", catg="SCIENCE")]
+                   sl("OBJECT,SKY", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
+                      calfib="FP", catg="SCIENCE"),
+                   sl("SKY,OBJECT", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
+                      calfib="FP", catg="SCIENCE"),
+                   sl("SKY,OBJECT", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
+                      calfib="FP", catg="SCIENCE"),
+                   sl("OBJECT,SKY", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
+                      calfib="FP", catg="SCIENCE")]
     else:
         frames += [ifu("ORDERDEF,LAMP", f"{arm}-ifu-ord"),
-                   ifu("SLIT,FP", f"{arm}-ifu-slit"),
-                   ifu("LSF,FP", f"{arm}-ifu-lsf"),
+                   ifu("SLITMASK,FP", f"{arm}-ifu-slit", calfib="FP"),
                    ifu("FLAT,LAMP", f"{arm}-ifu-flat"),
-                   ifu("WAVE,HCL,FP", f"{arm}-ifu-wave"),
-                   ifu("EFF,SKY", f"{arm}-ifu-eff"),
+                   ifu("WAVE,HCL", f"{arm}-ifu-wave", calfib="FP"),
+                   ifu("WAVE,FP", f"{arm}-ifu-wave", calfib="FP"),
+                   ifu("FLAT,SKY", f"{arm}-ifu-eff"),
                    ifu("STD,FLUX", f"{arm}-ifu-flux"),
                    ifu("STD,TELLURIC", f"{arm}-ifu-tell"),
+                   ifu("STD,RV", f"{arm}-ifu-rv", calfib="FP"),
                    ifu("OBJECT", f"{arm}-ifu-sci", catg="SCIENCE"),
                    ifu("SKY", f"{arm}-ifu-sci", catg="SCIENCE")]
 

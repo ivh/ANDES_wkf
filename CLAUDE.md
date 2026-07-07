@@ -221,7 +221,7 @@ The processing order (each step depends on products from previous steps):
 
 3. **Spectroscopic calibration**
    - Flat-field, blaze, order profile -> `andes_cal_flat` -> MASTER_FLAT_<slit>, BLAZE_<slit>, ORDER_PROFILE_<slit>
-   - LSF characterization -> `andes_cal_LSF` -> LSF_MODEL_<slit>
+   - LSF characterization -> `andes_cal_LSF` -> LSF_MODEL_<slit> (runs on the SLITMASK frames; no dedicated LSF raw type in the Templates Manual)
    - Wavelength calibration (FP) -> `andes_cal_wave_FP` -> WAVE_TABLE/WAVE_MATRIX/DLL_MATRIX/S1D_WAVE_<slit>, WAVE_MAP
    - Wavelength calibration (LFC) -> `andes_cal_wave_LFC` -> same products (alternative; FP is baseline)
    - Background subtraction -> `andes_util_bkgr` (inter-order scattered light)
@@ -327,11 +327,12 @@ So for generic utility recipes like `andes_util_detcal`: within a subworkflow th
 Files are classified by FITS headers (resolved naming, see andes_classification.py):
 - `instrume`: "ANDES"
 - `dpr.catg`: "CALIB", "SCIENCE" or "TECHNICAL" (LED flats)
-- `dpr.type`: `<KIND>,<A>,<C>,<B>` for echelle calibrations (KIND one of ORDERDEF, SLIT, LSF, FLAT, WAVE, EFF, STD; sources one of LAMP, OFF, FP, LFC, HCL, SKY, FLUX, RV, TELLURIC), plain `<A>,<C>,<B>` for science (e.g. "OBJECT,FP,SKY"), single-slot for IFU (e.g. "FLAT,LAMP", "OBJECT")
+- `dpr.type`: `<KIND>,<A>,<B>` for echelle calibrations (KIND one of ORDERDEF, SLITMASK, FLAT, WAVE, STD; sources one of LAMP, OFF, FP, LFC, HCL, SKY, FLUX, RV, TELLURIC), plain `<A>,<B>` for science (e.g. "OBJECT,SKY", "OBJECT,WAVE" in TC mode), single-slot for IFU (e.g. "FLAT,LAMP", "OBJECT")
 - `dpr.tech`: "IMAGE", "ECHELLE,FIBER" or "ECHELLE,IFU", optionally with a third element (SWAPPING/OFFSET/DITHERING)
 - `seq.arm`: spectrograph (UBV, RIZ, YJH, K); `ins.mode`: SL-UNI or IFU-AO; `det.binx`/`det.biny`: binning
+- `ins.calfib`: calibration fibre (C) source, FP/HCL/LFC/LAMP/OFF (dedicated keyword per Templates Manual and ESO-044156; name pending ICD; informational, not used in classification)
 
-Sub-slit order in comma-separated values is A, C, B (calibration fibre in the middle). The spectrograph is NOT encoded in dpr.tech; grouping/matching runs over the setup keywords, so one task graph serves all arms, binnings and modes. There is a 1:1 correspondence between raw DPR.TYPE kinds, templates and recipes.
+Sub-slit order in comma-separated values is A, B (Templates Manual E-AND-SW-MAN-06-00-001 v2.0; the calibration fibre C is not part of DPR.TYPE, see `ins.calfib`). The spectrograph is NOT encoded in dpr.tech; grouping/matching runs over the setup keywords, so one task graph serves all arms, binnings and modes. There is a 1:1 correspondence between raw DPR.TYPE kinds, templates and recipes.
 
 Products carry per-slit PRO.CATG suffixes `_A`, `_B`, `_C` or `_IFU`. Products with the same role from different recipes get origin prefixes to keep PRO.CATG unambiguous (S1D_WAVE_*, S1D_STD_FLUX_*, S1D_STD_TELL_*; bare S1D_*/SS1D_* are science products).
 
@@ -349,4 +350,4 @@ PYESOREX_PLUGIN_DIR=$PWD/recipes uv run edps -w andes.andes_wkf -i <dir> -t scie
 
 ### Current State
 
-Full workflow per spec E-AND-SW-SPE-09-00-002 v1.2: all 16 recipes as tasks/subworkflows (bias, dark, led, orderdef, slit, lsf, flat, wave_fp, wave_lfc, rel_eff, flux, telluric, science, rv_std + detcal/bkgr/extract steps). Wave FP/LFC are alternatives (FP preferred). Detector calibrations are optional associations (min_ret=0) since their availability is arm-dependent (no bias for NIR). Static tables (HCL_LINES_TABLE, STD_STAR_TABLE, STD_TELL_TABLE) are matched on instrume+seq.arm. Naming inconsistencies in the spec were resolved unilaterally and need consortium review; see the naming conventions above.
+Full workflow per spec E-AND-SW-SPE-09-00-002 v1.2: all 16 recipes as tasks/subworkflows (bias, dark, led, orderdef, slit, lsf, flat, wave_fp, wave_lfc, rel_eff, flux, telluric, science, rv_std + detcal/bkgr/extract steps). Wave FP/LFC are alternatives (FP preferred). Detector calibrations are optional associations (min_ret=0) since their availability is arm-dependent (no bias for NIR). Static tables (HCL_LINES_TABLE, STD_STAR_TABLE, STD_TELL_TABLE) are matched on instrume+seq.arm. DPR grammar follows the Templates Manual v2.0 (two slots A,B; calibration fibre in `ins.calfib`; SLITMASK instead of SLIT; sky flats FLAT,SKY,SKY; no LSF raw type - the LSF task consumes SLITMASK frames). Deltas against the DRL spec and AD2 are tracked in `calibration_plan.yaml` under `reconciliation` (item 10 = the grammar decision).

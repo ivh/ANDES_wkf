@@ -1,16 +1,18 @@
 """Classification rules for ANDES raw frames, static tables and products.
 
-Naming conventions (resolved from E-AND-SW-SPE-09-00-002 v1.2):
+Naming conventions (Templates Manual E-AND-SW-MAN-06-00-001 v2.0, Tables
+2 and 5; see calibration_plan.yaml reconciliation item 10):
 - 1:1 correspondence between raw DPR.TYPE kinds, templates and recipes
-- sub-slit order in comma-separated DPR.TYPE values is A, C, B
-  (calibration fibre in the middle), see andes_rules for the grammar
+- DPR.TYPE carries two sub-slit values: first fiber A, second fiber B;
+  the calibration fibre C is NOT in DPR.TYPE (ESO-044156) but in the
+  dedicated keyword ins.calfib, see andes_rules for the grammar
 - product PRO.CATG values carry per-slit suffixes _A, _B, _C or _IFU
 """
 
 from edps import classification_rule
 
 from . import andes_keywords as kwd
-from .andes_rules import is_science_sl, is_science_ifu
+from .andes_rules import is_science_sl, is_science_ifu, is_slitmask_sl
 
 andes = {kwd.instrume: "ANDES"}
 calib = {**andes, kwd.dpr_catg: "CALIB"}
@@ -33,41 +35,41 @@ ledff_class = classification_rule("LEDFF", {**andes, kwd.dpr_catg: "TECHNICAL",
 
 # --- echelle calibrations, SL-UNI ---
 
-orderdef_a_class = calib_rule("ORDERDEF_A", "ORDERDEF,LAMP,OFF,OFF", tech_sl)
-orderdef_c_class = calib_rule("ORDERDEF_C", "ORDERDEF,OFF,LAMP,OFF", tech_sl)
-orderdef_b_class = calib_rule("ORDERDEF_B", "ORDERDEF,OFF,OFF,LAMP", tech_sl)
-orderdef_acb_class = calib_rule("ORDERDEF_ACB", "ORDERDEF,LAMP,LAMP,LAMP", tech_sl)
+orderdef_a_class = calib_rule("ORDERDEF_A", "ORDERDEF,LAMP,OFF", tech_sl)
+orderdef_b_class = calib_rule("ORDERDEF_B", "ORDERDEF,OFF,LAMP", tech_sl)
 
-slit_class = calib_rule("SLIT", ["SLIT,FP,FP,FP", "SLIT,LFC,FP,LFC"], tech_sl)
-lsf_class = calib_rule("LSF", ["LSF,FP,FP,FP", "LSF,LFC,FP,LFC"], tech_sl)
+# manual Table 5 allows CALIB or TECHNICAL for slit-mask frames
+slitmask_class = classification_rule("SLITMASK", is_slitmask_sl)
 
-flat_a_class = calib_rule("FLAT_A", "FLAT,LAMP,OFF,OFF", tech_sl)
-flat_c_class = calib_rule("FLAT_C", "FLAT,OFF,LAMP,OFF", tech_sl)
-flat_b_class = calib_rule("FLAT_B", "FLAT,OFF,OFF,LAMP", tech_sl)
-flat_acb_class = calib_rule("FLAT_ACB", "FLAT,LAMP,LAMP,LAMP", tech_sl)
+flat_a_class = calib_rule("FLAT_A", "FLAT,LAMP,OFF", tech_sl)
+flat_b_class = calib_rule("FLAT_B", "FLAT,OFF,LAMP", tech_sl)
 
-wave_hcl_a_class = calib_rule("WAVE_HCL_A", "WAVE,HCL,FP,FP", tech_sl)
-wave_hcl_b_class = calib_rule("WAVE_HCL_B", "WAVE,FP,FP,HCL", tech_sl)
-wave_fp_class = calib_rule("WAVE_FP", "WAVE,FP,FP,FP", tech_sl)
-wave_lfc_class = calib_rule("WAVE_LFC", "WAVE,LFC,FP,LFC", tech_sl)
+wave_hcl_a_class = calib_rule("WAVE_HCL_A", "WAVE,HCL,FP", tech_sl)
+wave_hcl_b_class = calib_rule("WAVE_HCL_B", "WAVE,FP,HCL", tech_sl)
+wave_fp_class = calib_rule("WAVE_FP", "WAVE,FP,FP", tech_sl)
+wave_lfc_a_class = calib_rule("WAVE_LFC_A", "WAVE,LFC,FP", tech_sl)
+wave_lfc_b_class = calib_rule("WAVE_LFC_B", "WAVE,FP,LFC", tech_sl)
 
-eff_class = calib_rule("EFF", "EFF,SKY,OFF,SKY", tech_sl)
-std_flux_class = calib_rule("STD_FLUX", ["STD,FLUX,OFF,SKY", "STD,SKY,OFF,FLUX"], tech_sl)
+eff_class = calib_rule("EFF", "FLAT,SKY,SKY", tech_sl)
+std_flux_class = calib_rule("STD_FLUX", ["STD,FLUX,SKY", "STD,SKY,FLUX"], tech_sl)
 std_telluric_class = calib_rule("STD_TELLURIC",
-                                ["STD,TELLURIC,OFF,SKY", "STD,SKY,OFF,TELLURIC"], tech_sl)
-std_rv_class = calib_rule("STD_RV", ["STD,RV,FP,SKY", "STD,SKY,FP,RV"], tech_sl)
+                                ["STD,TELLURIC,SKY", "STD,SKY,TELLURIC"], tech_sl)
+std_rv_class = calib_rule("STD_RV", ["STD,RV,SKY", "STD,SKY,RV"], tech_sl)
 
 # --- echelle calibrations, IFU-AO ---
+# The manual defines no IFU slit-mask template; SLITMASK,FP kept as our
+# proposed type so the IFU cascade stays organizable (reconciliation 3).
 
 orderdef_ifu_class = calib_rule("ORDERDEF_IFU", "ORDERDEF,LAMP", tech_ifu)
-slit_ifu_class = calib_rule("SLIT_IFU", ["SLIT,FP", "SLIT,LFC"], tech_ifu)
-lsf_ifu_class = calib_rule("LSF_IFU", ["LSF,FP", "LSF,LFC"], tech_ifu)
+slitmask_ifu_class = calib_rule("SLITMASK_IFU", ["SLITMASK,FP", "SLITMASK,LFC"], tech_ifu)
 flat_ifu_class = calib_rule("FLAT_IFU", "FLAT,LAMP", tech_ifu)
-wave_hcl_ifu_class = calib_rule("WAVE_HCL_IFU", "WAVE,HCL,FP", tech_ifu)
-wave_lfc_ifu_class = calib_rule("WAVE_LFC_IFU", "WAVE,LFC,FP", tech_ifu)
-eff_ifu_class = calib_rule("EFF_IFU", "EFF,SKY", tech_ifu)
+wave_hcl_ifu_class = calib_rule("WAVE_HCL_IFU", "WAVE,HCL", tech_ifu)
+wave_fp_ifu_class = calib_rule("WAVE_FP_IFU", "WAVE,FP", tech_ifu)
+wave_lfc_ifu_class = calib_rule("WAVE_LFC_IFU", "WAVE,LFC", tech_ifu)
+eff_ifu_class = calib_rule("EFF_IFU", "FLAT,SKY", tech_ifu)
 std_flux_ifu_class = calib_rule("STD_FLUX_IFU", "STD,FLUX", tech_ifu)
 std_telluric_ifu_class = calib_rule("STD_TELLURIC_IFU", "STD,TELLURIC", tech_ifu)
+std_rv_ifu_class = calib_rule("STD_RV_IFU", "STD,RV", tech_ifu)
 
 # --- science ---
 
