@@ -128,3 +128,13 @@ reading; decision recorded as reconciliation item 10 in
 - `make_test_data.py` and the pytest samples rewritten accordingly
   (57 tests green). Real-pixel raw frames come from the E2E simulator
   (`andes-sim make-raw` / `night`), which follows the same grammar.
+
+Execution validation (same day): a fresh E2E headers-only RIZ night
+(86 frames + static tables) ran through the full cascade with the dummy
+recipes — 40/40 jobs COMPLETED toward science, plus the 4-job rv_std
+chain (44 total). The science SOF carries the complete calibration chain
+(per-slit wave products incl. _C, WAVE_MAP, REL_EFF, ABS_EFF, TELL_MODEL,
+extractions, line tables). Operational note: the EDPS *server* must be
+started with PYESOREX_PLUGIN_DIR set (and without a foreign
+ESOREX_PLUGIN_DIR); a server started from a shell lacking it makes every
+job fail in pyesorex get_c_recipes — `edps -shutdown` first.

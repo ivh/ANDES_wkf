@@ -344,6 +344,9 @@ uv run python tests/make_test_data.py <dir>            # synthetic raw data (RIZ
 uv run edps -w andes.andes_wkf -i <dir> -c             # classify
 uv run edps -w andes.andes_wkf -i <dir> -od            # organize (jobs + associations, no execution)
 PYESOREX_PLUGIN_DIR=$PWD/recipes uv run edps -w andes.andes_wkf -i <dir> -t science   # full run with dummy recipes
+# NB: the env vars must reach the EDPS *server*: if one is already running
+# without them (or with a foreign ESOREX_PLUGIN_DIR from another pipeline
+# kit), every job fails in pyesorex get_c_recipes -- `edps -shutdown` first.
 ```
 
 `recipes/andes_dummy_recipes.py` provides dummy pyesorex implementations of all 16 recipes; they write empty FITS products with the correct PRO.CATG and inherit setup keywords, so the whole cascade executes end-to-end.
