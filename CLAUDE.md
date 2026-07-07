@@ -42,7 +42,7 @@ edps/
     andes_rules.py           # Function-based classification rules
     andes_keywords.py        # Header keyword and setup-keyword definitions
     andes_parameters.yaml    # Workflow/recipe parameter sets
-  recipes/                # pyesorex recipe plugins; currently dummy recipes
+  recipes/                # pyesorex recipe plugins; real andes_cal_bias, rest dummies
   tests/                  # pytest suite + synthetic raw data generator
   docs/                   # EDPS documentation PDFs
   pyproject.toml          # uv project config
@@ -349,7 +349,7 @@ PYESOREX_PLUGIN_DIR=$PWD/recipes uv run edps -w andes.andes_wkf -i <dir> -t scie
 # kit), every job fails in pyesorex get_c_recipes -- `edps -shutdown` first.
 ```
 
-`recipes/andes_dummy_recipes.py` provides dummy pyesorex implementations of all 16 recipes; they write empty FITS products with the correct PRO.CATG and inherit setup keywords, so the whole cascade executes end-to-end.
+`recipes/andes_cal_bias.py` is the first real recipe (the template for the others: MEF products mirroring the raw layout, per-extension QC, closed-loop validated against simulator truth). `recipes/andes_dummy_recipes.py` provides dummy implementations of the remaining recipes; they write empty FITS products with the correct PRO.CATG and inherit setup keywords, so the whole cascade executes end-to-end.
 
 ### Current State
 

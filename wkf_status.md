@@ -138,3 +138,26 @@ extractions, line tables). Operational note: the EDPS *server* must be
 started with PYESOREX_PLUGIN_DIR set (and without a foreign
 ESOREX_PLUGIN_DIR); a server started from a shell lacking it makes every
 job fail in pyesorex get_c_recipes — `edps -shutdown` first.
+
+## Round 3 — first real recipe: andes_cal_bias (2026-07-07)
+
+Replaced the andes_cal_bias dummy with a real implementation
+(`recipes/andes_cal_bias.py`); its conventions are the template for the
+other recipes:
+
+- Products mirror the raw MEF layout: DFS-compliant header-only primary
+  (cpl.dfs.save_propertylist; PRO.CATG, setup keywords, summary QC), one
+  float32 extension per detector with per-extension QC.
+- MASTER_BIAS = kappa-sigma-clipped per-pixel mean (MAD-based threshold:
+  a plain std is too inflated by a single cosmic hit in a 10-stack to
+  ever clip it); MASTER_BIAS_RES = per-pixel std across the stack (RON
+  map). Parameters: kappa (5.0), clip_iterations (3).
+- QC per extension: BIAS LEVEL, RON ADU, RON E (via the extension's gain
+  keyword), MASTER RMS; NFRAMES on the primary.
+- Validated closed-loop against the E2E simulator's injected detector
+  truth (rawnights/riz_daily, 10 BIAS frames): level 1000.00 vs 1000,
+  RON 6.92 e- vs 7.0 (~1% low from clip trimming at N=10), master RMS
+  1.13 vs 1.11 ADU. Function-level pytest in tests/test_cal_bias.py
+  (5 tests); EDPS run: bias -> dark_detcal consumes the real products.
+- Runtime 206 s for 10 x 2 x 85 Mpx (masked-array clipping dominates;
+  optimize later if it matters).

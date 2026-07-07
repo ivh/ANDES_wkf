@@ -85,7 +85,7 @@ RECIPES = {
     "andes_util_detcal": util_detcal,
     "andes_util_bkgr": util_bkgr,
     "andes_util_extract": util_extract,
-    "andes_cal_bias": fixed("MASTER_BIAS", "MASTER_BIAS_RES"),
+    # andes_cal_bias has a real implementation (andes_cal_bias.py)
     "andes_cal_dark": fixed("MASTER_DARK", "HOT_PIXEL_MASK"),
     "andes_cal_led": fixed("BAD_PIXEL_MASK", "DETFLAT", "DETLIN"),
     "andes_cal_orderdef": slitwise("ORDER_TABLE"),
