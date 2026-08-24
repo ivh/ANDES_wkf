@@ -103,7 +103,7 @@ def led_swkf(bias_task, dark_task):
     return (task("led")
             .with_recipe("andes_cal_led")
             .with_main_input(detcal)
-            .with_meta_targets([QC1_CALIB])
+            .with_meta_targets([QC1_CALIB, CALCHECKER])
             .build())
 
 
@@ -118,7 +118,7 @@ def orderdef_swkf(bias_task, dark_task, led_task):
     return (task("orderdef")
             .with_recipe("andes_cal_orderdef")
             .with_main_input(detcal)
-            .with_meta_targets([QC1_CALIB])
+            .with_meta_targets([QC1_CALIB, CALCHECKER])
             .build())
 
 
@@ -133,7 +133,7 @@ def slit_swkf(bias_task, dark_task, led_task, orderdef_task):
             .with_main_input(detcal)
             .with_associated_input(orderdef_task, cls.order_table_classes,
                                    min_ret=1, max_ret=ALL)
-            .with_meta_targets([QC1_CALIB])
+            .with_meta_targets([QC1_CALIB, CALCHECKER])
             .build())
 
 
@@ -170,7 +170,7 @@ def lsf_swkf(bias_task, dark_task, led_task, orderdef_task, slit_task):
                                    min_ret=1, max_ret=ALL)
             .with_associated_input(slit_task, cls.slit_curve_classes,
                                    min_ret=1, max_ret=ALL)
-            .with_meta_targets([QC1_CALIB])
+            .with_meta_targets([QC1_CALIB, CALCHECKER])
             .build())
 
 
@@ -205,7 +205,7 @@ def wave_lfc_swkf(bias_task, dark_task, led_task, orderdef_task, slit_task, flat
             .with_main_input(extract)
             .with_associated_input(detcal, min_ret=1, max_ret=ALL)
             .with_associated_input(lsf_task, cls.lsf_model_classes, min_ret=0, max_ret=ALL)
-            .with_meta_targets([QC1_CALIB, CALCHECKER])
+            .with_meta_targets([QC1_CALIB])
             .build())
 
 
@@ -222,7 +222,7 @@ def rel_eff_swkf(bias_task, dark_task, led_task, orderdef_task, slit_task, flat_
     return (task("rel_eff")
             .with_recipe("andes_cal_rel_eff")
             .with_main_input(extract)
-            .with_meta_targets([QC1_CALIB])
+            .with_meta_targets([QC1_CALIB, CALCHECKER])
             .build())
 
 
@@ -259,7 +259,7 @@ def telluric_swkf(bias_task, dark_task, led_task, orderdef_task, slit_task, flat
             .with_main_input(extract)
             .with_alternative_associated_inputs(wave_alternatives(wave_fp_task, wave_lfc_task))
             .with_associated_input(ds.std_tell_table)
-            .with_meta_targets([QC1_CALIB])
+            .with_meta_targets([QC1_CALIB, CALCHECKER])
             .build())
 
 
@@ -290,12 +290,12 @@ def science_chain(name, raw, meta_targets, bias_task, dark_task, led_task, order
 science_swkf = subworkflow("science", "")(science_chain)
 rv_std_swkf = subworkflow("rv_std", "")(science_chain)
 
-science_task = science_swkf("science", ds.science, [SCIENCE],
+science_task = science_swkf("science", ds.science, [SCIENCE, CALCHECKER],
                             bias_task, dark_task, led_task, orderdef_task, slit_task,
                             flat_task, wave_fp_task, wave_lfc_task, rel_eff_task,
                             flux_task, telluric_task)
 
-rv_std_task = rv_std_swkf("rv_std", ds.std_rv, [QC1_CALIB],
+rv_std_task = rv_std_swkf("rv_std", ds.std_rv, [QC1_CALIB, CALCHECKER],
                           bias_task, dark_task, led_task, orderdef_task, slit_task,
                           flat_task, wave_fp_task, wave_lfc_task, rel_eff_task,
                           flux_task, telluric_task)

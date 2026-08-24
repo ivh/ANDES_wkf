@@ -44,12 +44,29 @@ edps/
     andes_parameters.yaml    # Workflow/recipe parameter sets
   recipes/                # pyesorex recipe plugins; real andes_cal_bias, rest dummies
   tests/                  # pytest suite + synthetic raw data generator
-  docs/                   # EDPS documentation PDFs
+  docs/                   # EDPS docs + project notes (see index below)
   pyproject.toml          # uv project config
   .env                    # Sets PYESOREX_PLUGIN_DIR=./recipes
 ```
 
 All commands use `uv run`, e.g. `uv run edps -lw` or `uv run pyesorex`.
+
+### docs/ index
+
+- `edps_workflow_design_guide0.9.pdf` — the reference for the `edps` API
+  (classification, data sources, tasks, meta-targets §4.2, input/output
+  filtering §4.3). First place to look for how a builder method behaves.
+- `edps_tutorial0.9.3.pdf` — running EDPS end-to-end (uses ESPRESSO/KMOS as
+  examples): targets/meta-targets on the command line, parameter sets, `-m`.
+- `EDPS_workflow_design_tutorial___quick_start 1.pdf` — minimal FORS workflow
+  built from scratch; good template for the overall file layout.
+- `meta_targets.md` — meta-target convention (esp. CALCHECKER) and ANDES's
+  tagging, distilled from the design guide + the ESPRESSO reference workflow.
+- `meta_chat.txt` — early scoping Q&A about the project.
+
+Reference pipeline for convention-checking: the installed ESPRESSO workflow at
+`~/pipes/espdr-3.3.0/workflows/` (`espresso_wkf.py` etc.) — a real ESO EDPS
+workflow to compare our choices against.
 
 ## EDPS Workflow Concepts
 
@@ -164,6 +181,12 @@ Predefined labels to group related tasks:
 - `QC1_CALIB` - master calibration / instrument monitoring tasks
 - `QC0` - quick-look tasks run at telescope
 - `CALCHECKER` - calibration monitoring tasks
+
+Selection-only (they don't affect associations/dataflow). The non-obvious
+convention — CALCHECKER goes on both cal producers *and* science/standard
+consumers, LFC excluded as upgrade path — plus ANDES's full tagging table and
+the ESPRESSO reference are in `docs/meta_targets.md`. Read it before touching
+`with_meta_targets`.
 
 ### Parameters File
 
