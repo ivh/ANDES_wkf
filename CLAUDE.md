@@ -363,7 +363,7 @@ Products carry per-slit PRO.CATG suffixes `_A`, `_B`, `_C` or `_IFU`. Products w
 
 ```bash
 uv run pytest                                          # classification + task-graph tests
-uv run python tests/make_test_data.py <dir>            # synthetic raw data (RIZ SL, YJH SL, YJH IFU)
+uv run python tests/make_test_data.py <dir> [--arms RIZ,YJH]   # synthetic raw data, plan-driven
 uv run edps -w andes.andes_wkf -i <dir> -c             # classify
 uv run edps -w andes.andes_wkf -i <dir> -od            # organize (jobs + associations, no execution)
 PYESOREX_PLUGIN_DIR=$PWD/recipes uv run edps -w andes.andes_wkf -i <dir> -t science   # full run with dummy recipes
@@ -371,6 +371,21 @@ PYESOREX_PLUGIN_DIR=$PWD/recipes uv run edps -w andes.andes_wkf -i <dir> -t scie
 # without them (or with a foreign ESOREX_PLUGIN_DIR from another pipeline
 # kit), every job fails in pyesorex get_c_recipes -- `edps -shutdown` first.
 ```
+
+`tests/make_test_data.py` is **plan-driven**: it walks `calibration_plan.yaml`
+(the same file `andes-sim night` consumes) and writes header-only frames, so the
+DPR grammar has a single source and cannot drift from the classification rules.
+It self-checks every frame against the workflow's own rules and prints a coverage
+report. Planned types the workflow can't classify yet (reconciliation 1/2/4:
+`FLAT,LAMP,LAMP`, `WAVE,FP,OFF`, `FLAT,OFF,OFF`, …) show up as UNCLASSIFIED —
+surfaced, not hidden. On the two features that aren't officially part of the
+instrument yet: (1) no fibre mask (M1/M2/M3) — but `SLIT_CURVE` is measured from
+FP lines across a fully-illuminated pseudo-slit and doesn't need the mask, so
+IFU still gets a slit characterization from a plain FP exposure (`SLITMASK,FP`,
+plan procedure C-slit-IFU); `slit_curve` therefore stays a required association
+(`min_ret=1`) in both modes. (2) No LFC — `wave_lfc` is an alternative to
+`wave_fp`, so a night with no LFC just resolves via FP. A plan-driven night
+organizes to 98 complete jobs (RIZ SL, YJH SL, YJH IFU).
 
 `recipes/andes_cal_bias.py` is the first real recipe (the template for the others: MEF products mirroring the raw layout, per-extension QC, closed-loop validated against simulator truth). `recipes/andes_dummy_recipes.py` provides dummy implementations of the remaining recipes; they write empty FITS products with the correct PRO.CATG and inherit setup keywords, so the whole cascade executes end-to-end.
 

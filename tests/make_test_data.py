@@ -1,19 +1,37 @@
-"""Generate a synthetic night of ANDES raw data for exercising the workflow.
+"""Generate a synthetic night of ANDES raw data from calibration_plan.yaml.
 
-Usage: uv run python tests/make_test_data.py <output_dir>
+Reads the canonical plan -- the same file the E2E simulator's `andes-sim night`
+consumes -- so the DPR grammar has a single source and cannot drift from the
+workflow's classification rules. Writes header-only frames for fast CI and
+manual edps runs (-c, -od, -t); real-pixel frames come from the simulator.
 
-Covers three instrument setups: RIZ SL-UNI (VIS, with bias), YJH SL-UNI
-(NIR, no bias) and YJH IFU-AO, plus the static calibration tables.
-Grammar: Templates Manual v2.0 (two slots A,B; calibration fibre C in
-ins.calfib). Real-pixel raw frames come from the E2E simulator instead
-(andes-sim make-raw / night); this header-only generator stays for fast CI.
+The plan is walked the way night.py walks it, but header-only, single VIS
+config and single IFU scale, with exposure counts capped. After writing, every
+frame is classified with the workflow's own rules and a coverage report is
+printed, so plan<->workflow gaps (unclassifiable planned types, reconciliation
+items 1/2/4) are surfaced rather than hidden.
+
+Usage: uv run python tests/make_test_data.py <output_dir> [--arms RIZ,YJH]
 """
 
+import argparse
 import itertools
 import sys
 from pathlib import Path
 
+import yaml
 from astropy.io import fits
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from andes import andes_classification as cls          # noqa: E402
+from andes import andes_keywords as kwd                # noqa: E402
+from edps.generator.classif_rule import BaseClassificationRule  # noqa: E402
+
+PLAN_PATH = REPO_ROOT / "calibration_plan.yaml"
+DEFAULT_ARMS = ["RIZ", "YJH"]   # one VIS (has bias), one NIR (no bias) + IFU
+NEXP_CAP = 3                    # header-only frames: a few per group is plenty
 
 counter = itertools.count(1)
 
@@ -22,99 +40,152 @@ def long_key(key):
     return "HIERARCH ESO " + key.upper().replace(".", " ") if "." in key else key.upper()
 
 
-def write_frame(outdir, arm, mjd, keywords):
+def write_frame(outdir, mjd, kws):
     hdu = fits.PrimaryHDU()
     hdu.header["INSTRUME"] = "ANDES"
     hdu.header["MJD-OBS"] = mjd
-    hdu.header[long_key("seq.arm")] = arm
-    for key, value in keywords.items():
-        hdu.header[long_key(key)] = value
-    name = f"ANDES_{arm}_{next(counter):04d}.fits"
+    for key, value in kws.items():
+        if value is not None:
+            hdu.header[long_key(key)] = value
+    name = f"ANDES_{kws.get('seq.arm', 'X')}_{next(counter):04d}.fits"
     hdu.writeto(Path(outdir) / name, overwrite=True)
 
 
-def calib(dpr_type, tech, tpl, catg="CALIB", **extra):
-    return {"dpr.catg": catg, "dpr.type": dpr_type, "dpr.tech": tech,
-            "tpl.start": tpl, "det.binx": 1, "det.biny": 1, **extra}
+def frame(arm, dpr_type, catg, tech, mode=None, calfib=None, mask=None):
+    return {"seq.arm": arm, "dpr.catg": catg, "dpr.type": dpr_type,
+            "dpr.tech": tech, "ins.mode": mode, "ins.calfib": calfib,
+            "ins.mask": mask, "det.binx": 1, "det.biny": 1}
 
 
-def sl(dpr_type, tpl, tech="ECHELLE,FIBER", calfib="OFF", **extra):
-    return calib(dpr_type, tech, tpl,
-                 **{"ins.mode": "SL-UNI", "ins.calfib": calfib, **extra})
+def _n(exp):
+    n = exp.get("n", 1)
+    return min(n, NEXP_CAP) if isinstance(n, int) else NEXP_CAP
 
 
-def ifu(dpr_type, tpl, tech="ECHELLE,IFU", calfib="OFF", **extra):
-    return calib(dpr_type, tech, tpl,
-                 **{"ins.mode": "IFU-AO", "ins.calfib": calfib, **extra})
+def _mode_for(applies, tech):
+    modes = applies.get("modes")
+    if modes:
+        return modes[0]
+    return "IFU-AO" if tech and "IFU" in tech else "SL-UNI"
 
 
-def make_setup(outdir, arm, mode, mjd0, with_bias):
-    frames = []
-    if with_bias:
-        frames += [calib("BIAS", "IMAGE", f"{arm}-bias")] * 5
-    frames += [calib("DARK", "IMAGE", f"{arm}-dark")] * 3
-    frames += [calib("FLAT,LAMP", "IMAGE", f"{arm}-led", catg="TECHNICAL")] * 4
+def plan_frames(plan, arms):
+    """Yield (group, frame-dict) for every planned exposure, plan grammar verbatim."""
+    for proc in plan.get("procedures", []):
+        if "reference" in proc:                       # when-used config repeats
+            continue
+        applies = proc.get("applies_to", {})
+        proc_arms = applies.get("arms", arms)
+        dpr = proc.get("dpr", {})
+        tpl = proc.get("template")
+        for arm in arms:
+            if arm not in proc_arms:
+                continue
+            for exp in proc.get("exposures", []):
+                tech = exp.get("tech") or dpr.get("tech")
+                mode = _mode_for(applies, tech)
+                if mode == "IFU-AO" and arm != "YJH":
+                    continue
+                kw = exp.get("keywords", {})
+                yield (f"{arm}:{tpl}:{mode}", exp, _n(exp),
+                       frame(arm, exp["type"], dpr.get("catg"), tech, mode,
+                             kw.get("ins.calfib"), kw.get("ins.mask")))
 
-    if mode == "SL-UNI":
-        frames += [sl("ORDERDEF,LAMP,OFF", f"{arm}-ord"),
-                   sl("ORDERDEF,OFF,LAMP", f"{arm}-ord"),
-                   sl("SLITMASK,FP,OFF", f"{arm}-slit", calfib="FP"),
-                   sl("SLITMASK,OFF,FP", f"{arm}-slit", calfib="FP"),
-                   sl("FLAT,LAMP,OFF", f"{arm}-flat"),
-                   sl("FLAT,OFF,LAMP", f"{arm}-flat"),
-                   sl("WAVE,HCL,FP", f"{arm}-wave", calfib="OFF"),
-                   sl("WAVE,FP,HCL", f"{arm}-wave", calfib="OFF"),
-                   sl("WAVE,FP,FP", f"{arm}-wave", calfib="FP"),
-                   sl("WAVE,LFC,FP", f"{arm}-lfc", calfib="FP"),
-                   sl("WAVE,FP,LFC", f"{arm}-lfc", calfib="FP"),
-                   sl("FLAT,SKY,SKY", f"{arm}-eff"),
-                   sl("FLAT,SKY,SKY", f"{arm}-eff"),
-                   sl("STD,FLUX,SKY", f"{arm}-flux"),
-                   sl("STD,TELLURIC,SKY", f"{arm}-tell"),
-                   sl("STD,RV,SKY", f"{arm}-rv", calfib="FP"),
-                   sl("OBJECT,SKY", f"{arm}-sci", calfib="FP", catg="SCIENCE"),
-                   sl("OBJECT,WAVE", f"{arm}-tc", calfib="FP", catg="SCIENCE"),
-                   # ABBA swapping sequence in one template
-                   sl("OBJECT,SKY", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
-                      calfib="FP", catg="SCIENCE"),
-                   sl("SKY,OBJECT", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
-                      calfib="FP", catg="SCIENCE"),
-                   sl("SKY,OBJECT", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
-                      calfib="FP", catg="SCIENCE"),
-                   sl("OBJECT,SKY", f"{arm}-swap", "ECHELLE,FIBER,SWAPPING",
-                      calfib="FP", catg="SCIENCE")]
-    else:
-        frames += [ifu("ORDERDEF,LAMP", f"{arm}-ifu-ord"),
-                   ifu("SLITMASK,FP", f"{arm}-ifu-slit", calfib="FP"),
-                   ifu("FLAT,LAMP", f"{arm}-ifu-flat"),
-                   ifu("WAVE,HCL", f"{arm}-ifu-wave", calfib="FP"),
-                   ifu("WAVE,FP", f"{arm}-ifu-wave", calfib="FP"),
-                   ifu("FLAT,SKY", f"{arm}-ifu-eff"),
-                   ifu("STD,FLUX", f"{arm}-ifu-flux"),
-                   ifu("STD,TELLURIC", f"{arm}-ifu-tell"),
-                   ifu("STD,RV", f"{arm}-ifu-rv", calfib="FP"),
-                   ifu("OBJECT", f"{arm}-ifu-sci", catg="SCIENCE"),
-                   ifu("SKY", f"{arm}-ifu-sci", catg="SCIENCE")]
+    for entry in plan.get("night_calibrations", []):
+        if entry.get("status") == "upgrade" or not entry.get("exposures"):
+            continue
+        dpr = entry.get("dpr", {})
+        tpl = entry.get("template") or entry.get("name")
+        for arm in arms:
+            for exp in entry.get("exposures", []):
+                tech = exp.get("tech") or dpr.get("tech")
+                mode = "IFU-AO" if tech and "IFU" in tech else "SL-UNI"
+                if mode == "IFU-AO" and arm != "YJH":
+                    continue
+                kw = exp.get("keywords", {})
+                yield (f"{arm}:{tpl}:{mode}", exp, _n(exp),
+                       frame(arm, exp["type"], dpr.get("catg"), tech, mode,
+                             kw.get("ins.calfib")))
 
-    for i, keywords in enumerate(frames):
-        write_frame(outdir, arm, mjd0 + i * 0.001, keywords)
-
-
-def make_static_tables(outdir, arm, mjd):
-    for catg in ("HCL_LINES_TABLE", "STD_STAR_TABLE", "STD_TELL_TABLE"):
-        write_frame(outdir, arm, mjd, {"pro.catg": catg})
+    for entry in plan.get("observations", []):
+        dpr = entry.get("dpr", {})
+        tpl = (entry.get("templates") or [entry.get("name")])[0]
+        for arm in arms:
+            for exp in entry.get("exposures", []):
+                tech = exp.get("tech") or dpr.get("tech")
+                mode = "IFU-AO" if tech and "IFU" in tech else "SL-UNI"
+                if mode == "IFU-AO" and arm != "YJH":
+                    continue
+                kw = exp.get("keywords", {})
+                yield (f"{arm}:{entry.get('name')}:{mode}", exp, _n(exp),
+                       frame(arm, exp["type"], dpr.get("catg"), tech, mode,
+                             kw.get("ins.calfib")))
 
 
-def main(outdir):
+def static_tables(arms):
+    for arm in arms:
+        for catg in ("HCL_LINES_TABLE", "STD_STAR_TABLE", "STD_TELL_TABLE"):
+            yield {"seq.arm": arm, "pro.catg": catg}
+
+
+def raw_rules():
+    return [v for v in vars(cls).values()
+            if isinstance(v, BaseClassificationRule) and not v.is_product()]
+
+
+class _F(dict):
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def __getitem__(self, k): return self.get(k)
+
+
+def classify(kws):
+    f = _F({kwd.instrume: "ANDES", kwd.dpr_catg: kws.get("dpr.catg"),
+            kwd.dpr_type: kws.get("dpr.type"), kwd.dpr_tech: kws.get("dpr.tech"),
+            kwd.pro_catg: kws.get("pro.catg")})
+    return {r.classification for r in raw_rules() if r.is_classified(f)}
+
+
+def report(rows):
+    ok = [r for r in rows if len(r[1]) == 1]
+    ambiguous = [r for r in rows if len(r[1]) > 1]
+    missing = sorted({r[0] for r in rows if not r[1]})
+    print(f"\ncoverage: {len(ok)}/{len(rows)} frames classify to exactly one tag")
+    if missing:
+        print("  UNCLASSIFIED planned types (plan<->workflow gaps):")
+        for t in missing:
+            print(f"    - {t}")
+    if ambiguous:
+        print("  AMBIGUOUS (matched >1 rule):")
+        for t, tags in {r[0]: r[1] for r in ambiguous}.items():
+            print(f"    - {t} -> {sorted(tags)}")
+    tags = sorted({next(iter(m)) for _, m in ok})
+    print(f"  tags exercised: {', '.join(tags)}")
+
+
+def main(outdir, arms):
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    make_setup(outdir, "RIZ", "SL-UNI", 61000.0, with_bias=True)
-    make_setup(outdir, "YJH", "SL-UNI", 61000.0, with_bias=False)
-    make_setup(outdir, "YJH", "IFU-AO", 61000.2, with_bias=False)
-    for arm in ("RIZ", "YJH"):
-        make_static_tables(outdir, arm, 61000.0)
-    print(f"wrote {next(counter) - 1} files to {outdir}")
+    plan = yaml.safe_load(PLAN_PATH.read_text())
+
+    rows, mjd = [], 61000.0
+    for group, _exp, n, kws in plan_frames(plan, arms):
+        for _ in range(n):
+            write_frame(outdir, mjd, {**kws, "tpl.start": group})
+            mjd += 0.001
+        rows.append((f"{kws['dpr.catg']} {kws['dpr.type']} [{kws['dpr.tech']}]",
+                     classify(kws)))
+    for kws in static_tables(arms):
+        write_frame(outdir, mjd, {**kws, "tpl.start": f"{kws['seq.arm']}-static"})
+        mjd += 0.001
+
+    print(f"wrote {next(counter) - 1} files to {outdir} for arms {arms}")
+    report(rows)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "test_data")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("outdir", nargs="?", default="test_data")
+    ap.add_argument("--arms", default=",".join(DEFAULT_ARMS))
+    args = ap.parse_args()
+    main(args.outdir, [a for a in args.arms.split(",") if a])

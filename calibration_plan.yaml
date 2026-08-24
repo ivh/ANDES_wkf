@@ -265,6 +265,21 @@ procedures:
     recipe: "andes_cal_slit (+ andes_cal_LSF, see reconciliation #3)"
     workflow_task: slit
 
+  - cp: C-slit-IFU
+    status: proposed
+    template: ANDES_IFU-AO_cal_slitmask
+    set: when-used
+    applies_to: {arms: [YJH], modes: [IFU-AO], per: ifu_scale}
+    frequency: when-used
+    dpr: {catg: CALIB, tech: "ECHELLE,IFU"}
+    exposures:
+      # slit tilt/curvature from FP lines across the fully-illuminated IFU
+      # pseudo-slit; the fibre mask is not needed for the slit curve, so no
+      # ins.mask here (reconciliation #3)
+      - {type: "SLITMASK,FP", n: 1, exptime_s: 120, keywords: {ins.calfib: FP}}
+    recipe: "andes_cal_slit (+ andes_cal_LSF)"
+    workflow_task: slit
+
   # --- when-used-set --------------------------------------------------------
   # VIS 2x2_slow: repeat C-ff-SL-UNI, C-wl-FP/HCL-SL-UNI, CC-wl-SL-UNI and
   # C-slit-SL-UNI with config 2x2_slow (same exposure lists as above).
@@ -434,6 +449,13 @@ reconciliation:
       no IFU variant, and no LSF raw type (DRL spec had LSF,...). The
       workflow keeps the LSF recipe fed from the SLITMASK frames; AD2's
       whole-slit mask exposures are encoded as the manual's per-slit pairs.
+      The slit tilt/curvature (SLIT_CURVE) is measured from FP lines across a
+      fully-illuminated pseudo-slit and does NOT require the fibre mask, so an
+      IFU slit characterization is possible with a plain FP exposure: added
+      here as proposed C-slit-IFU (SLITMASK,FP, ECHELLE,IFU, no ins.mask),
+      which the workflow already classifies (SLITMASK_IFU). The mask
+      (M1/M2/M3) remains a separate fibre-level concern, not a SLIT_CURVE
+      input. The manual still needs an IFU slit template.
   - id: 4
     topic: NIR lamp-off frames
     issue: >
