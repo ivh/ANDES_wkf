@@ -46,10 +46,19 @@ edps/
   tests/                  # pytest suite + synthetic raw data generator
   docs/                   # EDPS docs + project notes (see index below)
   pyproject.toml          # uv project config
-  .env                    # Sets PYESOREX_PLUGIN_DIR=./recipes
+  justfile                # `just edps ...` wrapper with the correct plugin env
+  .env                    # PYESOREX_PLUGIN_DIR=./recipes (NB: not auto-loaded)
 ```
 
 All commands use `uv run`, e.g. `uv run edps -lw` or `uv run pyesorex`.
+
+Run the edps client through **`just edps ...`** (see justfile): it sets
+`PYESOREX_PLUGIN_DIR` and strips any foreign `ESOREX_PLUGIN_DIR` inherited from
+the shell (~/.zshrc exports one for other ESO kits), which otherwise makes the
+EDPS server fail every job in pyesorex get_c_recipes. `.env` cannot do this --
+uv does not override an already-set variable -- so the env lives in the
+justfile. Multiple targets go in one flag: `-t science rv_std` (a second `-t`
+overrides the first, it does not append).
 
 ### docs/ index
 
@@ -218,12 +227,11 @@ The workflow is split per this convention (no `andes_task_functions.py` yet; tas
 ### Running EDPS
 
 ```bash
-uv run edps -lw                                               # list available workflows
-uv run edps -w andes.andes_wkf -g | dot -Tpng > andes.png    # generate workflow graph (collapsed subworkflows)
-uv run edps -w andes.andes_wkf -g2 | dot -Tpng > andes.png   # detailed graph (shows tasks inside subworkflows)
-uv run edps -w andes.andes_wkf -i <data_dir> -t bias         # run bias task
-uv run edps -w andes.andes_wkf -lt                            # list tasks in workflow
-uv run edps -shutdown                                         # restart server after workflow changes
+just edps -lw                                                # list available workflows
+just graph                                                   # regenerate andes.png + andes_detailed.png
+just edps -w andes.andes_wkf -i <data_dir> -t bias           # run bias task
+just edps -w andes.andes_wkf -lt                             # list tasks in workflow
+just shutdown                                                # restart server after workflow changes
 ```
 
 ## ANDES Data Reduction Pipeline
@@ -364,12 +372,13 @@ Products carry per-slit PRO.CATG suffixes `_A`, `_B`, `_C` or `_IFU`. Products w
 ```bash
 uv run pytest                                          # classification + task-graph tests
 uv run python tests/make_test_data.py <dir> [--arms RIZ,YJH]   # synthetic raw data, plan-driven
-uv run edps -w andes.andes_wkf -i <dir> -c             # classify
-uv run edps -w andes.andes_wkf -i <dir> -od            # organize (jobs + associations, no execution)
-PYESOREX_PLUGIN_DIR=$PWD/recipes uv run edps -w andes.andes_wkf -i <dir> -t science   # full run with dummy recipes
-# NB: the env vars must reach the EDPS *server*: if one is already running
-# without them (or with a foreign ESOREX_PLUGIN_DIR from another pipeline
-# kit), every job fails in pyesorex get_c_recipes -- `edps -shutdown` first.
+just testdata <dir>                                    # plan-driven headers-only night
+just edps -w andes.andes_wkf -i <dir> -c               # classify
+just edps -w andes.andes_wkf -i <dir> -od              # organize (jobs + associations, no execution)
+just edps -w andes.andes_wkf -i <dir> -t science rv_std   # full run with dummy recipes
+# NB: the plugin env must reach the EDPS *server* the first client call spawns.
+# `just edps` injects it; if a server is already running with the wrong env
+# (foreign ESOREX_PLUGIN_DIR), every job fails in get_c_recipes -- `just shutdown` first.
 ```
 
 `tests/make_test_data.py` is **plan-driven**: it walks `calibration_plan.yaml`
