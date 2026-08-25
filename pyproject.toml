@@ -17,6 +17,12 @@ dev = ["pytest"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+# the edps dependency still uses class-based pydantic Config and ast.Str;
+# silence its deprecation noise (none of it originates in our code)
+filterwarnings = [
+    "ignore::pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore:ast.Str is deprecated:DeprecationWarning",
+]
 
 [[tool.uv.index]]
 name = "pycpl"

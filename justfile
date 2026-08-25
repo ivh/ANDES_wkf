@@ -15,6 +15,10 @@ edps_env := "env -u ESOREX_PLUGIN_DIR PYESOREX_PLUGIN_DIR=" + recipes
 edps *args:
     {{edps_env}} uv run edps {{args}}
 
+# run pyesorex with the correct plugin environment (e.g. `just pyesorex --recipes`)
+pyesorex *args:
+    {{edps_env}} uv run pyesorex {{args}}
+
 # restart the edps server (do this after workflow changes)
 shutdown:
     -{{edps_env}} uv run edps -shutdown
