@@ -7,8 +7,6 @@ products. No data processing happens here; replace recipe by recipe with
 real implementations.
 """
 
-import os
-
 import cpl
 from astropy.io import fits
 
@@ -29,8 +27,12 @@ def strip_suffix(tag):
 
 
 def base_tag(tags):
-    prefix = os.path.commonprefix(sorted(set(tags)))
-    return prefix.rstrip("_,") or "UNKNOWN"
+    ordered = sorted(set(tags))
+    first, last = ordered[0], ordered[-1]
+    i = 0
+    while i < len(first) and i < len(last) and first[i] == last[i]:
+        i += 1
+    return first[:i].rstrip("_,") or "UNKNOWN"
 
 
 def main_frames(frameset, recipe_name):

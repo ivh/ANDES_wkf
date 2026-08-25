@@ -491,22 +491,22 @@ wheels = [
 
 [[package]]
 name = "pycpl"
-version = "1.0.4.post3"
+version = "1.0.4.post4"
 source = { registry = "https://ivh.github.io/pycpl/simple/" }
 dependencies = [
     { name = "astropy" },
     { name = "numpy" },
 ]
-sdist = { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3.tar.gz" }
+sdist = { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4.tar.gz" }
 wheels = [
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp313-cp313-linux_aarch64.whl" },
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp313-cp313-linux_x86_64.whl" },
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp313-cp313-macosx_11_0_arm64.whl" },
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp313-cp313-macosx_11_0_x86_64.whl" },
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp314-cp314-linux_aarch64.whl" },
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp314-cp314-linux_x86_64.whl" },
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp314-cp314-macosx_11_0_arm64.whl" },
-    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post3/pycpl-1.0.4.post3-cp314-cp314-macosx_11_0_x86_64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp313-cp313-linux_aarch64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp313-cp313-linux_x86_64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp313-cp313-macosx_11_0_arm64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp313-cp313-macosx_11_0_x86_64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp314-cp314-linux_aarch64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp314-cp314-linux_x86_64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp314-cp314-macosx_11_0_arm64.whl" },
+    { url = "https://github.com/ivh/pycpl/releases/download/v1.0.4.post4/pycpl-1.0.4.post4-cp314-cp314-macosx_11_0_x86_64.whl" },
 ]
 
 [[package]]

@@ -66,9 +66,13 @@ def strip_suffix(tag):
 
 
 def base_tag(tags):
-    import os
-    prefix = os.path.commonprefix(sorted(set(tags)))
-    return prefix.rstrip("_,") or "FRAME"
+    """Longest common character prefix of the input tags (FLAT_A/FLAT_B -> FLAT)."""
+    ordered = sorted(set(tags))
+    first, last = ordered[0], ordered[-1]
+    i = 0
+    while i < len(first) and i < len(last) and first[i] == last[i]:
+        i += 1
+    return first[:i].rstrip("_,") or "FRAME"
 
 
 def clean_band(adu, gain, ron_e, exptime, bias=None, dark_rate=None, flat=None,
