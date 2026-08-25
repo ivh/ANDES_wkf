@@ -42,7 +42,7 @@ edps/
     andes_rules.py           # Function-based classification rules
     andes_keywords.py        # Header keyword and setup-keyword definitions
     andes_parameters.yaml    # Workflow/recipe parameter sets
-  recipes/                # pyesorex recipe plugins; real andes_cal_bias, rest dummies
+  recipes/                # pyesorex recipe plugins; real andes_cal_bias + andes_util_detcal, rest dummies
   tests/                  # pytest suite + synthetic raw data generator
   docs/                   # EDPS docs + project notes (see index below)
   pyproject.toml          # uv project config
@@ -396,7 +396,9 @@ plan procedure C-slit-IFU); `slit_curve` therefore stays a required association
 `wave_fp`, so a night with no LFC just resolves via FP. A plan-driven night
 organizes to 98 complete jobs (RIZ SL, YJH SL, YJH IFU).
 
-`recipes/andes_cal_bias.py` is the first real recipe (the template for the others: MEF products mirroring the raw layout, per-extension QC, closed-loop validated against simulator truth). `recipes/andes_dummy_recipes.py` provides dummy implementations of the remaining recipes; they write empty FITS products with the correct PRO.CATG and inherit setup keywords, so the whole cascade executes end-to-end.
+`recipes/andes_cal_bias.py` is the first real recipe (the template for the others: MEF products mirroring the raw layout, per-extension QC, closed-loop validated against simulator truth). `recipes/andes_util_detcal.py` is the second: it inverts the simulator forward model (bias/dark/gain/flat/bad-pixel) to produce cleaned frames in electrons with DATA/ERR/QUAL extensions per detector, tags `<base>_DETCAL` (per exposure) + `<base>_DETCAL_STACK` (mean). Each correction is skipped unless its calibration is present with a matching shape, so absent/optional or still-dummy calibrations (and header-only inputs) are handled gracefully and the cascade keeps flowing. `recipes/andes_dummy_recipes.py` provides dummy implementations of the remaining recipes; they write empty FITS products with the correct PRO.CATG and inherit setup keywords, so the whole cascade executes end-to-end.
+
+Convention note for the next real recipes: a cleaned frame is `<band>` (DATA, e-) + `<band>_ERR` (1-sigma e-) + `<band>_QUAL` (int bitmask: 1=bad, 2=hot, 4=saturated). `MASTER_DARK` is expected as an e-/s rate map (detcal scales by EXPTIME); real cal_dark must produce that.
 
 ### Current State
 

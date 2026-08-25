@@ -161,3 +161,33 @@ other recipes:
   (5 tests); EDPS run: bias -> dark_detcal consumes the real products.
 - Runtime 206 s for 10 x 2 x 85 Mpx (masked-array clipping dominates;
   optimize later if it matters).
+
+## Round 4 — second real recipe: andes_util_detcal (2026-08-25)
+
+Replaced the andes_util_detcal dummy with a real implementation
+(`recipes/andes_util_detcal.py`): detector cleaning of any raw frame.
+
+- Inverts the E2E simulator forward model
+  `adu = electrons/gain + bias + N(0,ron); electrons = signal + dark*t`:
+  bias subtract (MASTER_BIAS) -> gain to electrons (per-ext DET CHIP GAIN)
+  -> dark subtract (MASTER_DARK as an e-/s rate map x EXPTIME) -> flat-field
+  (DETFLAT) -> bad-pixel flags (BAD_PIXEL_MASK | HOT_PIXEL_MASK | saturation).
+- Output convention (set for all downstream real recipes): per detector a
+  DATA image (e-) + `<band>_ERR` (1-sigma, sqrt(signal + ron^2) propagated) +
+  `<band>_QUAL` (int bitmask 1=bad/2=hot/4=saturated). Read noise per pixel
+  from MASTER_BIAS_RES x gain when present, else scalar DET CHIP RON.
+- Two products keeping the tags the cascade consumes: `<base>_DETCAL` (one
+  MEF per exposure) and `<base>_DETCAL_STACK` (mean-combined). `<base>` is the
+  common classification of the input group (DARK, FLAT, ...).
+- Each correction is skipped unless its calibration is present with a matching
+  shape -- so optional/absent cals (min_ret=0), still-dummy cals (empty 2x2)
+  and header-only inputs (no extensions -> extension-less products) are all
+  handled and the cascade keeps flowing.
+- Not yet implemented (the simulator can't exercise them): linearity (linear
+  detector model), cosmic-ray rejection, swapped-frame (ABBA) subtraction --
+  each a TODO in the recipe.
+- Validation: 7 function-level pytest against the forward model
+  (tests/test_util_detcal.py); closed-loop on a real sim BIAS frame (median
+  0.000 e-, std 7.025 vs RON 7.0); full EDPS cascade 106/106 jobs COMPLETED
+  with all 12 *_detcal tasks running the real recipe. cpl bumped to 1.0.4
+  in uv.lock.

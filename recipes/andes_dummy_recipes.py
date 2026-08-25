@@ -18,10 +18,6 @@ PIPE_ID = "andes/0.1"
 SETUP_KEYS = ["INSTRUME", "MJD-OBS", "HIERARCH ESO SEQ ARM", "HIERARCH ESO INS MODE",
               "HIERARCH ESO DET BINX", "HIERARCH ESO DET BINY", "HIERARCH ESO TPL START"]
 
-# products associated into detcal jobs (anything else in the SOF is the main group)
-DETCAL_CALIBS = {"MASTER_BIAS", "MASTER_BIAS_RES", "MASTER_DARK", "HOT_PIXEL_MASK",
-                 "BAD_PIXEL_MASK", "DETFLAT", "DETLIN"}
-
 MAIN_SUFFIXES = ("_DETCAL_STACK", "_DETCAL", "_BKGR_SUB")
 
 
@@ -38,10 +34,7 @@ def base_tag(tags):
 
 
 def main_frames(frameset, recipe_name):
-    if recipe_name == "andes_util_detcal":
-        selected = [f for f in frameset if f.tag not in DETCAL_CALIBS]
-    else:
-        selected = [f for f in frameset if f.tag.endswith(MAIN_SUFFIXES)]
+    selected = [f for f in frameset if f.tag.endswith(MAIN_SUFFIXES)]
     return selected or list(frameset)
 
 
@@ -67,10 +60,6 @@ def fixed(*catgs):
     return lambda base, slits: list(catgs)
 
 
-def util_detcal(base, slits):
-    return [f"{base}_DETCAL", f"{base}_DETCAL_STACK"]
-
-
 def util_bkgr(base, slits):
     return [f"{base}_BKGR_SUB"]
 
@@ -82,10 +71,9 @@ def util_extract(base, slits):
 
 
 RECIPES = {
-    "andes_util_detcal": util_detcal,
+    # andes_util_detcal and andes_cal_bias have real implementations
     "andes_util_bkgr": util_bkgr,
     "andes_util_extract": util_extract,
-    # andes_cal_bias has a real implementation (andes_cal_bias.py)
     "andes_cal_dark": fixed("MASTER_DARK", "HOT_PIXEL_MASK"),
     "andes_cal_led": fixed("BAD_PIXEL_MASK", "DETFLAT", "DETLIN"),
     "andes_cal_orderdef": slitwise("ORDER_TABLE"),
