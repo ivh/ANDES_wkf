@@ -7,16 +7,19 @@ so the truth (signal in electrons) is known. The pyesorex/EDPS plumbing is
 exercised by the end-to-end cascade run (see wkf_status.md).
 """
 
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
+from astropy.io import fits
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "recipes"))
 
 from andes_util_detcal import (  # noqa: E402
-    QUAL_BADPIX, QUAL_HOTPIX, QUAL_SATURATED, base_tag, clean_band, clean_frame)
+    GAIN_KEY, RON_KEY, QUAL_BADPIX, QUAL_HOTPIX, QUAL_SATURATED,
+    base_tag, clean_band, clean_frame)
 
 RNG = np.random.default_rng(7)
 GAIN = 2.0        # e-/ADU (CCD fast, matches the simulator)
@@ -112,3 +115,47 @@ def test_base_tag_from_group():
     assert base_tag(["FLAT_A", "FLAT_B"]) == "FLAT"
     assert base_tag(["DARK"]) == "DARK"
     assert base_tag(["ORDERDEF_A", "ORDERDEF_B"]) == "ORDERDEF"
+
+
+# --- real-frame closed loop (skipped unless the E2E simulator night exists) ---
+# Complements the synthetic tests above: exercises the true MEF layout, real
+# noise, uint16 rounding and the actual clean_frame path on simulator pixels.
+# Override the location with $ANDES_RAWNIGHTS.
+
+RAWNIGHTS = Path(os.environ.get("ANDES_RAWNIGHTS", Path.home() / "ANDES/E2E/rawnights"))
+
+
+def _find_frame(dpr_type):
+    if not RAWNIGHTS.exists():
+        return None
+    for path in sorted(RAWNIGHTS.rglob("*.fits")):
+        try:
+            header = fits.getheader(path)
+        except OSError:
+            continue
+        if header.get("HIERARCH ESO DPR TYPE") == dpr_type and len(fits.open(path)) > 1:
+            return path
+    return None
+
+
+BIAS_FRAME = _find_frame("BIAS")
+
+
+@pytest.mark.skipif(BIAS_FRAME is None,
+                    reason=f"no simulator BIAS frame under {RAWNIGHTS}")
+def test_closed_loop_on_real_bias_frame():
+    """Cleaning a real BIAS frame with a median master bias -> ~0 e-, std ~RON."""
+    with fits.open(BIAS_FRAME) as hdul:
+        band = hdul[1].name
+        raw = hdul[1].data.astype(np.float32)
+        gain = float(hdul[1].header[GAIN_KEY])
+        ron = float(hdul[1].header[RON_KEY])
+
+    calibs = {k: {} for k in ("bias", "res", "dark", "flat", "badpix", "hotpix")}
+    calibs["bias"] = {band: np.full(raw.shape, np.median(raw), dtype=np.float32)}
+    data, err, qual = clean_frame(str(BIAS_FRAME), calibs)[band]
+
+    assert np.median(data) == pytest.approx(0.0, abs=0.5)   # bias removed
+    assert np.std(data) == pytest.approx(ron, rel=0.1)      # residual = read noise
+    assert np.median(err) == pytest.approx(ron, rel=0.1)    # err map ~ RON at ~0 signal
+    assert gain > 0
