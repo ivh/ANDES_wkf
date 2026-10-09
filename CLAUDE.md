@@ -44,6 +44,7 @@ edps/
     andes_parameters.yaml    # Workflow/recipe parameter sets
   recipes/                # pyesorex recipe plugins; real andes_cal_bias + andes_util_detcal, rest dummies
   tests/                  # pytest suite + synthetic raw data generator
+  tools/cascade_svg.py    # DRL-spec Fig 10 style bus diagram, read from the live EDPS task graph
   docs/                   # EDPS docs + project notes (see index below)
   pyproject.toml          # uv project config
   justfile                # `just edps ...` wrapper with the correct plugin env
@@ -228,7 +229,7 @@ The workflow is split per this convention (no `andes_task_functions.py` yet; tas
 
 ```bash
 just edps -lw                                                # list available workflows
-just graph                                                   # regenerate andes.png + andes_detailed.png
+just graph                                                   # regenerate andes.png, andes_detailed.png, andes_cascade.{svg,png}
 just edps -w andes.andes_wkf -i <data_dir> -t bias           # run bias task
 just edps -w andes.andes_wkf -lt                             # list tasks in workflow
 just shutdown                                                # restart server after workflow changes

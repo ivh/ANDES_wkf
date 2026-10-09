@@ -31,7 +31,9 @@ test *args:
 testdata dir arms="RIZ,YJH":
     uv run python tests/make_test_data.py "{{dir}}" --arms "{{arms}}"
 
-# regenerate the workflow graph PNGs (collapsed + detailed)
+# regenerate the workflow graphs (EDPS collapsed + detailed, and the Fig-10 style cascade)
 graph:
     {{edps_env}} uv run edps -w andes.andes_wkf -g 2>/dev/null | dot -Tpng > andes.png
     {{edps_env}} uv run edps -w andes.andes_wkf -g2 2>/dev/null | dot -Tpng > andes_detailed.png
+    uv run python tools/cascade_svg.py andes.andes_wkf -o andes_cascade.svg
+    rsvg-convert -z 1.5 andes_cascade.svg -o andes_cascade.png

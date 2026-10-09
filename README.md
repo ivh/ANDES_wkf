@@ -32,13 +32,19 @@ just edps -w andes.andes_wkf -lt                      # list tasks / meta-target
 just edps -w andes.andes_wkf -i <dir> -c              # classify raw frames
 just edps -w andes.andes_wkf -i <dir> -od             # organize (jobs + associations, no run)
 just edps -w andes.andes_wkf -i <dir> -t science rv_std   # full run (dummy + real recipes)
-just graph                                            # regenerate andes.png + andes_detailed.png
+just graph                                            # regenerate andes.png, andes_detailed.png, andes_cascade.svg
 just shutdown                                          # restart the server after workflow changes
 ```
 
 Multiple targets go in one flag: `-t science rv_std` (a second `-t` overrides,
 it does not append). After changing recipes or the workflow, `just shutdown`
 so the next client call respawns the server with a fresh environment.
+
+`andes_cascade.svg` ([tools/cascade_svg.py](tools/cascade_svg.py)) draws the
+workflow in the bus layout of the DRL specification's reduction-cascade figure
+(Fig 10), read from the live EDPS task graph: one column per task chain, one
+bus per product set consumed outside its chain, dots for required/optional/
+alternative inputs. Easier to audit than EDPS's own `-g2` graph.
 
 ## Test data
 
